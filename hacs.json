@@ -1,0 +1,7 @@
+{
+  "name": "HA Timeline Card",
+  "description": "A Home Assistant custom card that displays a configurable timeline of calendar events — perfect for visualizing time-of-use electricity tariffs or any recurring schedule.",
+  "render_readme": true,
+  "content_in_root": true,
+  "filename": "ha-timeline-card.js"
+}
