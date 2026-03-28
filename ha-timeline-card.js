@@ -50,7 +50,12 @@ class HaTimelineCardEditor extends HTMLElement {
 
   setConfig(config) {
     this._config = config ? { ...config } : {};
-    this._render();
+    // Only do a full render on first call (shadowRoot empty).
+    // Subsequent calls come from our own config-changed event being reflected
+    // back by HA — we must NOT re-render or the focused input loses focus.
+    if (!this.shadowRoot.getElementById('cal-list')) {
+      this._render();
+    }
   }
 
   set hass(hass) {
