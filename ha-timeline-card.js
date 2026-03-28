@@ -330,7 +330,10 @@ class HaTimelineCard extends HTMLElement {
       show_title: config.show_title !== false,
       show_legend: config.show_legend !== false,
     };
+    // Force re-fetch on every config change (duration may have changed)
+    this._lastFetch = 0;
     this._render();
+    if (this._hass) this._fetchEvents();
   }
 
   set hass(hass) {
@@ -411,8 +414,8 @@ class HaTimelineCard extends HTMLElement {
     const durationMs = parseDuration(this._config.duration);
 
     // ── Build color segments ─────────────────────────────────────────────────
-    // Sample every minute; merge consecutive same-color segments
-    const STEP_MS = 60 * 1000; // 1-minute resolution
+    // Adaptive step: ~1440 samples max regardless of duration
+    const STEP_MS = Math.max(60 * 1000, Math.ceil(durationMs / 1440 / 60000) * 60000);
     const friseEl = root.getElementById('frise-bar');
     if (!friseEl) return;
 
