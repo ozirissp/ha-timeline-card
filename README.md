@@ -19,7 +19,7 @@ Supports multiple calendars, configurable duration, optional title and legend, a
 ### Via HACS (recommended)
 
 1. In HACS → **Frontend** → three-dot menu → **Custom repositories**
-2. Add `https://github.com/your-repo/ha-timeline-card` with category **Lovelace**
+2. Add `https://github.com/ozirissp/ha-timeline-card` with category **Lovelace**
 3. Install **HA Timeline Card** and reload
 
 ### Manual

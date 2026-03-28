@@ -616,5 +616,5 @@ window.customCards.push({
   name: 'HA Timeline Card',
   description: 'Frise temporelle multi-calendriers configurable',
   preview: true,
-  documentationURL: 'https://github.com/your-repo/ha-timeline-card',
+  documentationURL: 'https://github.com/ozirissp/ha-timeline-card',
 });
