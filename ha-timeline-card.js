@@ -15,27 +15,46 @@ function parseDuration(raw) {
   if (s.endsWith('h')) return n * 60 * 60 * 1000;
   if (s.endsWith('m')) return n * 60 * 1000;
   if (s.endsWith('s')) return n * 1000;
-  // no unit → assume hours
   return n * 60 * 60 * 1000;
 }
 
-// Format a tick label from a timestamp and total duration (ms)
+// ─── Calendar group normalizer ────────────────────────────────────────────────
+// A calendar entry in YAML can be:
+//   { entity: "calendar.xxx", color, label }         ← legacy single entity
+//   { entities: ["calendar.a", "calendar.b"], color, label }  ← new multi-entity group
+//   "calendar.xxx"                                   ← bare string shorthand
+// Returns a normalized group: { entities: [...], color, label }
+function _normalizeGroup(c, fallbackColor) {
+  if (typeof c === 'string') {
+    return { entities: [c], color: fallbackColor, label: c.replace('calendar.', '') };
+  }
+  const entities = Array.isArray(c.entities)
+    ? c.entities.filter(Boolean)
+    : c.entity
+      ? [c.entity]
+      : [];
+  return {
+    entities,
+    color: c.color || fallbackColor,
+    label: c.label || entities[0] || '',
+  };
+}
+
+const DEFAULT_COLORS = ['#5DCAA5', '#F0997B', '#7B9FF0', '#F0D97B', '#D07BF0', '#F07BB5', '#7BF0E4'];
+
+// ─── Tick label ───────────────────────────────────────────────────────────────
 function tickLabel(tsMs, isFirst, durationMs) {
   const d = new Date(tsMs);
   if (durationMs <= 3 * 60 * 60 * 1000) {
-    // ≤3h → show HH:MM
     return isFirst ? 'Maint.' : `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
   }
   if (durationMs <= 7 * 24 * 60 * 60 * 1000) {
-    // ≤7d → show "HHh" or day+hour
     const hh = d.getHours();
     if (durationMs > 24 * 60 * 60 * 1000 && hh === 0) {
-      // Multi-day: mark midnight with day name
       return d.toLocaleDateString('fr-FR', { weekday: 'short' });
     }
     return isFirst ? 'Maint.' : `${hh}h`;
   }
-  // >7d → show date
   return isFirst ? 'Auj.' : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 }
 
@@ -50,9 +69,6 @@ class HaTimelineCardEditor extends HTMLElement {
 
   setConfig(config) {
     this._config = config ? { ...config } : {};
-    // Only do a full render on first call (shadowRoot empty).
-    // Subsequent calls come from our own config-changed event being reflected
-    // back by HA — we must NOT re-render or the focused input loses focus.
     if (!this.shadowRoot.getElementById('cal-list')) {
       this._render();
     }
@@ -72,21 +88,18 @@ class HaTimelineCardEditor extends HTMLElement {
     return Object.keys(this._hass.states).filter(e => e.startsWith('calendar.')).sort();
   }
 
-  // Build the list of calendars from config
-  _configCals() {
+  // Returns normalized groups from current config
+  _configGroups() {
     const cals = this._config.calendars;
     if (!Array.isArray(cals)) return [];
-    return cals.map(c => {
-      if (typeof c === 'string') return { entity: c, color: '#5DCAA5', label: c };
-      return { entity: c.entity || '', color: c.color || '#5DCAA5', label: c.label || c.entity || '' };
-    });
+    return cals.map((c, i) => _normalizeGroup(c, DEFAULT_COLORS[i % DEFAULT_COLORS.length]));
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
   _render() {
     const cfg = this._config;
-    const cals = this._configCals();
+    const groups = this._configGroups();
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -96,7 +109,7 @@ class HaTimelineCardEditor extends HTMLElement {
              padding-bottom: 6px; }
         .field { display: flex; flex-direction: column; gap: 4px; }
         .field label { font-size: 12px; color: var(--secondary-text-color, #888); }
-        input[type="text"], input[type="number"], select {
+        input[type="text"], select {
           border: 1px solid var(--divider-color, #444); border-radius: 6px;
           padding: 6px 10px; background: var(--card-background-color, #1c1c1c);
           color: var(--primary-text-color, #e0e0e0); font-size: 14px;
@@ -104,15 +117,46 @@ class HaTimelineCardEditor extends HTMLElement {
         .row { display: flex; gap: 8px; align-items: center; }
         .row input[type="color"] { width: 36px; height: 30px; border: none; border-radius: 4px; cursor: pointer; padding:0; }
         .row input[type="text"] { flex: 1; }
-        .cal-row { display: flex; gap: 6px; align-items: center; padding: 6px 0;
-                   border-bottom: 1px solid var(--divider-color, #2a2a2a); }
-        .cal-row input[type="text"] { flex: 1; min-width: 0; }
-        .cal-row input[type="color"] { width: 32px; height: 28px; border: none; border-radius: 4px; cursor: pointer; padding:0; flex-shrink:0; }
-        .cal-row button { background: transparent; border: none; color: var(--error-color, #e74c3c);
-                          cursor: pointer; font-size: 16px; flex-shrink:0; padding: 0 4px; }
-        .btn-add { align-self: flex-start; margin-top: 4px; padding: 5px 12px; border-radius: 6px;
-                   border: 1px solid var(--primary-color, #5DCAA5); color: var(--primary-color, #5DCAA5);
-                   background: transparent; cursor: pointer; font-size: 12px; }
+
+        /* Group card */
+        .group-card {
+          border: 1px solid var(--divider-color, #333);
+          border-radius: 8px;
+          padding: 10px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          background: var(--secondary-background-color, #1a1a1a);
+        }
+        .group-header { display: flex; gap: 8px; align-items: center; }
+        .group-header input[type="color"] { width: 32px; height: 28px; border: none; border-radius: 4px; cursor: pointer; padding:0; flex-shrink:0; }
+        .group-header input[type="text"] { flex: 1; }
+        .group-header button.grp-remove { background: transparent; border: none;
+          color: var(--error-color, #e74c3c); cursor: pointer; font-size: 16px; padding: 0 4px; flex-shrink:0; }
+
+        /* Entity tags */
+        .entities-wrap { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 28px; }
+        .entity-tag {
+          display: inline-flex; align-items: center; gap: 4px;
+          background: var(--divider-color, #333); border-radius: 12px;
+          padding: 2px 8px; font-size: 11px; color: var(--primary-text-color, #e0e0e0);
+        }
+        .entity-tag button {
+          background: none; border: none; color: var(--secondary-text-color, #888);
+          cursor: pointer; font-size: 13px; padding: 0; line-height: 1;
+        }
+        .entity-tag button:hover { color: var(--error-color, #e74c3c); }
+
+        /* Entity picker inside group */
+        .entity-add-row { display: flex; gap: 6px; align-items: center; }
+        .entity-add-row select { flex: 1; font-size: 12px; padding: 4px 8px; }
+        .btn-add-entity { padding: 4px 10px; border-radius: 6px; font-size: 11px;
+          border: 1px solid var(--primary-color, #5DCAA5); color: var(--primary-color, #5DCAA5);
+          background: transparent; cursor: pointer; white-space: nowrap; }
+
+        .btn-add-group { align-self: flex-start; padding: 5px 12px; border-radius: 6px;
+          border: 1px solid var(--primary-color, #5DCAA5); color: var(--primary-color, #5DCAA5);
+          background: transparent; cursor: pointer; font-size: 12px; }
         .toggle-row { display: flex; align-items: center; justify-content: space-between; }
         .toggle-row label { font-size: 13px; color: var(--primary-text-color, #e0e0e0); }
         input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; }
@@ -120,19 +164,11 @@ class HaTimelineCardEditor extends HTMLElement {
       </style>
       <div class="editor">
 
-        <h3>Calendriers</h3>
+        <h3>Groupes de calendriers</h3>
         <div id="cal-list">
-          ${cals.map((c, i) => this._calRowHtml(i, c)).join('')}
+          ${groups.map((g, i) => this._groupHtml(i, g)).join('')}
         </div>
-        <div class="field">
-          <label class="hint">Ajouter depuis HA :</label>
-          <div class="row">
-            <select id="cal-picker">
-              <option value="">— sélectionner —</option>
-            </select>
-            <button class="btn-add" id="btn-add-cal">+ Ajouter</button>
-          </div>
-        </div>
+        <button class="btn-add-group" id="btn-add-group">+ Nouveau groupe</button>
 
         <h3>Durée</h3>
         <div class="field">
@@ -171,26 +207,45 @@ class HaTimelineCardEditor extends HTMLElement {
     this._syncTitleVisibility();
   }
 
-  _calRowHtml(idx, cal) {
+  _groupHtml(idx, group) {
+    const tagsHtml = group.entities.map(e => `
+      <span class="entity-tag" data-entity="${this._esc(e)}">
+        ${this._esc(e.replace('calendar.', ''))}
+        <button class="tag-remove" title="Retirer">✕</button>
+      </span>`).join('');
+
     return `
-      <div class="cal-row" data-idx="${idx}">
-        <input type="color" class="cal-color" value="${this._esc(cal.color)}" title="Couleur" />
-        <input type="text" class="cal-entity" value="${this._esc(cal.entity)}" placeholder="calendar.xxx" />
-        <input type="text" class="cal-label" value="${this._esc(cal.label)}" placeholder="Légende" />
-        <button class="cal-remove" title="Supprimer">✕</button>
+      <div class="group-card" data-idx="${idx}">
+        <div class="group-header">
+          <input type="color" class="grp-color" value="${this._esc(group.color)}" title="Couleur du groupe" />
+          <input type="text" class="grp-label" value="${this._esc(group.label)}" placeholder="Légende du groupe" />
+          <button class="grp-remove" title="Supprimer le groupe">✕</button>
+        </div>
+        <div class="entities-wrap">
+          ${tagsHtml}
+        </div>
+        <div class="entity-add-row">
+          <select class="grp-entity-picker">
+            <option value="">— ajouter un calendrier —</option>
+          </select>
+          <button class="btn-add-entity">+ Ajouter</button>
+        </div>
       </div>`;
   }
 
   _populateCalendarOptions() {
-    const sel = this.shadowRoot.getElementById('cal-picker');
-    if (!sel) return;
     const entities = this._calendarEntities();
-    while (sel.options.length > 1) sel.remove(1);
-    entities.forEach(e => {
-      const opt = document.createElement('option');
-      opt.value = e;
-      opt.textContent = e;
-      sel.appendChild(opt);
+    // Populate all pickers (global + per-group)
+    this.shadowRoot.querySelectorAll('.grp-entity-picker').forEach(sel => {
+      const current = sel.value;
+      while (sel.options.length > 1) sel.remove(1);
+      entities.forEach(e => {
+        const opt = document.createElement('option');
+        opt.value = e;
+        opt.textContent = e;
+        sel.appendChild(opt);
+      });
+      sel.value = current;
     });
   }
 
@@ -202,38 +257,60 @@ class HaTimelineCardEditor extends HTMLElement {
 
   _wireEvents() {
     const root = this.shadowRoot;
+    const list = root.getElementById('cal-list');
 
-    // Calendar rows: color sync + change
-    root.getElementById('cal-list').addEventListener('input', e => {
-      const row = e.target.closest('.cal-row');
-      if (!row) return;
-      if (e.target.classList.contains('cal-color')) {
-        const txt = row.querySelector('.cal-color-text');
-        if (txt) txt.value = e.target.value;
+    // Group-level color / label changes
+    list.addEventListener('input', e => {
+      const card = e.target.closest('.group-card');
+      if (!card) return;
+      this._fireChange();
+    });
+
+    // Remove an entity tag from a group
+    list.addEventListener('click', e => {
+      // Remove entity tag
+      if (e.target.classList.contains('tag-remove')) {
+        e.target.closest('.entity-tag').remove();
+        this._fireChange();
+        return;
       }
-      this._fireChange();
+      // Remove entire group
+      if (e.target.classList.contains('grp-remove')) {
+        e.target.closest('.group-card').remove();
+        this._fireChange();
+        return;
+      }
+      // Add entity to group
+      if (e.target.classList.contains('btn-add-entity')) {
+        const card = e.target.closest('.group-card');
+        const sel = card.querySelector('.grp-entity-picker');
+        if (!sel.value) return;
+        const entity = sel.value;
+        // Check not already present
+        const existing = [...card.querySelectorAll('.entity-tag')].map(t => t.dataset.entity);
+        if (existing.includes(entity)) { sel.value = ''; return; }
+        // Insert tag
+        const wrap = card.querySelector('.entities-wrap');
+        const tag = document.createElement('span');
+        tag.className = 'entity-tag';
+        tag.dataset.entity = entity;
+        tag.innerHTML = `${this._esc(entity.replace('calendar.', ''))} <button class="tag-remove" title="Retirer">✕</button>`;
+        wrap.appendChild(tag);
+        sel.value = '';
+        this._fireChange();
+        return;
+      }
     });
 
-    // Remove calendar row
-    root.getElementById('cal-list').addEventListener('click', e => {
-      if (!e.target.classList.contains('cal-remove')) return;
-      e.target.closest('.cal-row').remove();
-      this._fireChange();
-    });
-
-    // Add calendar from picker
-    root.getElementById('btn-add-cal').addEventListener('click', () => {
-      const sel = root.getElementById('cal-picker');
-      if (!sel.value) return;
-      const entity = sel.value;
+    // Add new empty group
+    root.getElementById('btn-add-group').addEventListener('click', () => {
       const list = root.getElementById('cal-list');
-      const idx = list.querySelectorAll('.cal-row').length;
-      const defaultColors = ['#5DCAA5', '#F0997B', '#7B9FF0', '#F0D97B', '#D07BF0'];
-      const color = defaultColors[idx % defaultColors.length];
+      const idx = list.querySelectorAll('.group-card').length;
+      const color = DEFAULT_COLORS[idx % DEFAULT_COLORS.length];
       const tmp = document.createElement('div');
-      tmp.innerHTML = this._calRowHtml(idx, { entity, color, label: entity.replace('calendar.', '') });
+      tmp.innerHTML = this._groupHtml(idx, { entities: [], color, label: '' });
       list.appendChild(tmp.firstElementChild);
-      sel.value = '';
+      this._populateCalendarOptions();
       this._fireChange();
     });
 
@@ -242,7 +319,6 @@ class HaTimelineCardEditor extends HTMLElement {
       root.getElementById(id)?.addEventListener('change', () => this._fireChange());
     });
 
-    // Sync color ↔ text
     root.getElementById('default_color')?.addEventListener('input', () => {
       root.getElementById('default_color_text').value = root.getElementById('default_color').value;
       this._fireChange();
@@ -253,13 +329,10 @@ class HaTimelineCardEditor extends HTMLElement {
       this._fireChange();
     });
 
-    // Toggle show_title
     root.getElementById('show_title')?.addEventListener('change', () => {
       this._syncTitleVisibility();
       this._fireChange();
     });
-
-    // Toggle show_legend
     root.getElementById('show_legend')?.addEventListener('change', () => this._fireChange());
   }
 
@@ -268,17 +341,20 @@ class HaTimelineCardEditor extends HTMLElement {
     const get = id => root.getElementById(id)?.value ?? '';
     const checked = id => root.getElementById(id)?.checked ?? true;
 
-    // Collect calendar rows
-    const rows = root.querySelectorAll('#cal-list .cal-row');
+    // Collect groups
     const calendars = [];
-    rows.forEach(row => {
-      const entity = row.querySelector('.cal-entity')?.value?.trim();
-      if (!entity) return;
-      calendars.push({
-        entity,
-        color: row.querySelector('.cal-color')?.value || '#5DCAA5',
-        label: row.querySelector('.cal-label')?.value?.trim() || entity,
-      });
+    root.querySelectorAll('#cal-list .group-card').forEach(card => {
+      const entities = [...card.querySelectorAll('.entity-tag')].map(t => t.dataset.entity).filter(Boolean);
+      const color = card.querySelector('.grp-color')?.value || '#5DCAA5';
+      const label = card.querySelector('.grp-label')?.value?.trim() || '';
+      // Only include groups that have at least one entity
+      if (entities.length === 0) return;
+      // Use entity (string) if single entity for YAML readability, entities[] if multiple
+      if (entities.length === 1) {
+        calendars.push({ entity: entities[0], color, label });
+      } else {
+        calendars.push({ entities, color, label });
+      }
     });
 
     const newConfig = {
@@ -291,9 +367,7 @@ class HaTimelineCardEditor extends HTMLElement {
       default_color: get('default_color') || '#444444',
     };
 
-    // Strip undefined
     Object.keys(newConfig).forEach(k => newConfig[k] === undefined && delete newConfig[k]);
-
     this._config = newConfig;
     this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: newConfig }, bubbles: true }));
   }
@@ -309,8 +383,8 @@ class HaTimelineCard extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this._config = {};
     this._hass = null;
-    // Map: entity → [{start, end}]
-    this._eventsByCalendar = {};
+    // Map: entity string → [{start, end}]
+    this._eventsByEntity = {};
     this._lastFetch = 0;
     this._fetchInterval = 5 * 60 * 1000;
     this._tickInterval = null;
@@ -320,22 +394,21 @@ class HaTimelineCard extends HTMLElement {
 
   setConfig(config) {
     if (!config.calendars || !Array.isArray(config.calendars) || config.calendars.length === 0) {
-      throw new Error('ha-timeline-card: "calendars" est requis (tableau de {entity, color, label})');
+      throw new Error('ha-timeline-card: "calendars" est requis');
     }
 
     this._config = {
-      calendars: config.calendars.map(c =>
-        typeof c === 'string'
-          ? { entity: c, color: '#5DCAA5', label: c }
-          : { entity: c.entity, color: c.color || '#5DCAA5', label: c.label || c.entity }
-      ),
+      // Normalize all groups: always { entities[], color, label }
+      calendars: config.calendars.map((c, i) =>
+        _normalizeGroup(c, DEFAULT_COLORS[i % DEFAULT_COLORS.length])
+      ).filter(g => g.entities.length > 0),
       duration: config.duration ?? '24h',
       default_color: config.default_color || '#444444',
       title: config.title ?? null,
       show_title: config.show_title !== false,
       show_legend: config.show_legend !== false,
     };
-    // Force re-fetch on every config change (duration may have changed)
+
     this._lastFetch = 0;
     this._render();
     if (this._hass) this._fetchEvents();
@@ -343,8 +416,7 @@ class HaTimelineCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    const now = Date.now();
-    if (now - this._lastFetch > this._fetchInterval) {
+    if (Date.now() - this._lastFetch > this._fetchInterval) {
       this._fetchEvents();
     }
   }
@@ -365,27 +437,31 @@ class HaTimelineCard extends HTMLElement {
 
     const durationMs = parseDuration(this._config.duration);
     const startMs = Date.now();
-    // Fetch a bit extra to cover boundary events
     const endMs = startMs + durationMs + 60 * 60 * 1000;
     const start = new Date(startMs).toISOString();
     const end = new Date(endMs).toISOString();
 
+    // Collect all unique entities across all groups
+    const allEntities = [...new Set(
+      this._config.calendars.flatMap(g => g.entities)
+    )];
+
     const results = await Promise.all(
-      this._config.calendars.map(async cal => {
+      allEntities.map(async entity => {
         try {
           const events = await this._hass.callApi('GET',
-            `calendars/${cal.entity}?start=${start}&end=${end}`);
-          return { entity: cal.entity, events: Array.isArray(events) ? events : [] };
+            `calendars/${entity}?start=${start}&end=${end}`);
+          return { entity, events: Array.isArray(events) ? events : [] };
         } catch (e) {
-          console.warn(`[ha-timeline-card] Erreur fetch ${cal.entity}:`, e);
-          return { entity: cal.entity, events: [] };
+          console.warn(`[ha-timeline-card] Erreur fetch ${entity}:`, e);
+          return { entity, events: [] };
         }
       })
     );
 
-    this._eventsByCalendar = {};
+    this._eventsByEntity = {};
     results.forEach(({ entity, events }) => {
-      this._eventsByCalendar[entity] = events.map(ev => ({
+      this._eventsByEntity[entity] = events.map(ev => ({
         start: _parseEventDate(ev.start),
         end:   _parseEventDate(ev.end),
       }));
@@ -398,14 +474,16 @@ class HaTimelineCard extends HTMLElement {
 
   /**
    * For a given timestamp (ms), returns the color to display.
-   * Calendars are evaluated in order: the FIRST calendar in the list that has
-   * an event covering that time wins (highest priority = first in list).
+   * Groups are evaluated in order (first = highest priority).
+   * A group matches if ANY of its entities has an event covering tsMs.
    */
   _colorAt(tsMs) {
-    for (const cal of this._config.calendars) {
-      const evs = this._eventsByCalendar[cal.entity] || [];
-      if (evs.some(ev => tsMs >= ev.start && tsMs < ev.end)) {
-        return cal.color;
+    for (const group of this._config.calendars) {
+      for (const entity of group.entities) {
+        const evs = this._eventsByEntity[entity] || [];
+        if (evs.some(ev => tsMs >= ev.start && tsMs < ev.end)) {
+          return group.color;
+        }
       }
     }
     return this._config.default_color;
@@ -418,8 +496,6 @@ class HaTimelineCard extends HTMLElement {
     const nowMs = Date.now();
     const durationMs = parseDuration(this._config.duration);
 
-    // ── Build color segments ─────────────────────────────────────────────────
-    // Adaptive step: ~1440 samples max regardless of duration
     const STEP_MS = Math.max(60 * 1000, Math.ceil(durationMs / 1440 / 60000) * 60000);
     const friseEl = root.getElementById('frise-bar');
     if (!friseEl) return;
@@ -451,29 +527,20 @@ class HaTimelineCard extends HTMLElement {
     const labelsEl = root.getElementById('frise-labels');
     if (labelsEl) {
       labelsEl.innerHTML = '';
-
-      // Choose tick interval
       const tickMs = _chooseTickInterval(durationMs);
-      // Align first tick to next clean boundary after now
-      const ticks = [];
-      // Always include t=0 (now)
-      ticks.push(0);
-      // Round up first interior tick
+      const ticks = [0];
       const firstTick = Math.ceil(nowMs / tickMs) * tickMs;
       for (let t = firstTick; t < nowMs + durationMs; t += tickMs) {
         ticks.push(t - nowMs);
       }
       ticks.push(durationMs);
-
-      // Deduplicate and sort
       const unique = [...new Set(ticks)].sort((a, b) => a - b);
 
-      unique.forEach((offsetMs, i) => {
+      unique.forEach(offsetMs => {
         const span = document.createElement('span');
         const tsMs = nowMs + offsetMs;
         const pct = offsetMs / durationMs * 100;
         const label = tickLabel(tsMs, offsetMs === 0, durationMs);
-
         let css = 'position:absolute;font-size:10px;color:#aaa;white-space:nowrap;';
         if (offsetMs === 0) {
           css += 'left:0%;';
@@ -506,45 +573,16 @@ class HaTimelineCard extends HTMLElement {
           box-sizing: border-box;
         }
         .card-title {
-          font-size: 14px;
-          font-weight: 500;
-          text-transform: uppercase;
-          letter-spacing: 0.07em;
-          color: var(--secondary-text-color, #888);
+          font-size: 14px; font-weight: 500; text-transform: uppercase;
+          letter-spacing: 0.07em; color: var(--secondary-text-color, #888);
           margin-bottom: 12px;
         }
         .frise-wrap { position: relative; }
-        .frise-bar {
-          display: flex;
-          height: 36px;
-          border-radius: 6px;
-          overflow: hidden;
-          width: 100%;
-        }
-        .labels-row {
-          position: relative;
-          height: 18px;
-          margin-top: 4px;
-        }
-        .legend {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 14px;
-          margin-top: 10px;
-        }
-        .legend-item {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 12px;
-          color: var(--secondary-text-color, #aaa);
-        }
-        .legend-dot {
-          width: 12px;
-          height: 12px;
-          border-radius: 3px;
-          flex-shrink: 0;
-        }
+        .frise-bar { display: flex; height: 36px; border-radius: 6px; overflow: hidden; width: 100%; }
+        .labels-row { position: relative; height: 18px; margin-top: 4px; }
+        .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--secondary-text-color, #aaa); }
+        .legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
       </style>
       <ha-card>
         ${showTitle ? `<div class="card-title">${_esc(cfg.title)}</div>` : ''}
@@ -554,10 +592,10 @@ class HaTimelineCard extends HTMLElement {
         <div id="frise-labels" class="labels-row"></div>
         ${showLegend ? `
         <div class="legend">
-          ${cfg.calendars.map(c => `
+          ${cfg.calendars.map(g => `
             <div class="legend-item">
-              <div class="legend-dot" style="background:${_esc(c.color)};"></div>
-              ${_esc(c.label)}
+              <div class="legend-dot" style="background:${_esc(g.color)};"></div>
+              ${_esc(g.label)}
             </div>`).join('')}
         </div>` : ''}
       </ha-card>
@@ -579,8 +617,8 @@ class HaTimelineCard extends HTMLElement {
       show_legend: true,
       title: 'Mon planning',
       calendars: [
-        { entity: 'calendar.example_a', color: '#5DCAA5', label: 'Calendrier A' },
-        { entity: 'calendar.example_b', color: '#F0997B', label: 'Calendrier B' },
+        { entities: ['calendar.example_a', 'calendar.example_b'], color: '#5DCAA5', label: 'Groupe fusionné' },
+        { entity: 'calendar.example_c', color: '#F0997B', label: 'Calendrier seul' },
       ],
     };
   }
@@ -590,15 +628,13 @@ class HaTimelineCard extends HTMLElement {
 
 /**
  * Parse a HA calendar event date object to a timestamp (ms).
- * - dateTime events: ISO string with timezone → parse directly.
- * - all-day events: "YYYY-MM-DD" string → parse as LOCAL midnight to avoid
- *   UTC offset issues (new Date("2026-03-28") gives UTC midnight, not local).
+ * - dateTime: ISO string with timezone → parse directly.
+ * - date (all-day): "YYYY-MM-DD" → parse as LOCAL midnight (not UTC).
  */
 function _parseEventDate(dateObj) {
   if (!dateObj) return 0;
   if (dateObj.dateTime) return new Date(dateObj.dateTime).getTime();
   if (dateObj.date) {
-    // "YYYY-MM-DD" → local midnight
     const [y, m, d] = dateObj.date.split('-').map(Number);
     return new Date(y, m - 1, d).getTime();
   }
@@ -610,20 +646,15 @@ function _esc(v) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/**
- * Choose a tick interval (ms) that gives ~5–9 ticks for the given duration.
- */
 function _chooseTickInterval(durationMs) {
   const MINUTE = 60 * 1000;
   const HOUR   = 60 * MINUTE;
   const DAY    = 24 * HOUR;
-
   const candidates = [
     5 * MINUTE, 10 * MINUTE, 15 * MINUTE, 30 * MINUTE,
     HOUR, 2 * HOUR, 3 * HOUR, 6 * HOUR, 12 * HOUR,
     DAY, 2 * DAY, 7 * DAY,
   ];
-
   for (const c of candidates) {
     const ticks = Math.floor(durationMs / c);
     if (ticks >= 4 && ticks <= 10) return c;
