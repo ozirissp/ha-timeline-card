@@ -386,8 +386,8 @@ class HaTimelineCard extends HTMLElement {
     this._eventsByCalendar = {};
     results.forEach(({ entity, events }) => {
       this._eventsByCalendar[entity] = events.map(ev => ({
-        start: new Date(ev.start.dateTime || ev.start.date).getTime(),
-        end:   new Date(ev.end.dateTime   || ev.end.date).getTime(),
+        start: _parseEventDate(ev.start),
+        end:   _parseEventDate(ev.end),
       }));
     });
 
@@ -587,6 +587,23 @@ class HaTimelineCard extends HTMLElement {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Parse a HA calendar event date object to a timestamp (ms).
+ * - dateTime events: ISO string with timezone → parse directly.
+ * - all-day events: "YYYY-MM-DD" string → parse as LOCAL midnight to avoid
+ *   UTC offset issues (new Date("2026-03-28") gives UTC midnight, not local).
+ */
+function _parseEventDate(dateObj) {
+  if (!dateObj) return 0;
+  if (dateObj.dateTime) return new Date(dateObj.dateTime).getTime();
+  if (dateObj.date) {
+    // "YYYY-MM-DD" → local midnight
+    const [y, m, d] = dateObj.date.split('-').map(Number);
+    return new Date(y, m - 1, d).getTime();
+  }
+  return 0;
+}
 
 function _esc(v) {
   return (v == null ? '' : String(v))
