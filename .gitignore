@@ -1,2 +1,8 @@
 .gh-token
 AGENTS.md
+
+# Dependencies
+node_modules/
+
+# Coverage reports
+coverage/
