@@ -1,6 +1,6 @@
 {
   "name": "ha-timeline-card",
-  "version": "0.3.0",
+  "version": "0.2.1",
   "description": "Home Assistant custom Lovelace card — horizontal multi-calendar timeline",
   "type": "module",
   "scripts": {
