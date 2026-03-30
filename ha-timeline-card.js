@@ -17,9 +17,14 @@
   // Parses strings like "24h", "90m", "7d", "30s" → milliseconds
   // Falls back to numeric value treated as hours for backward compatibility.
   function parseDuration(raw) {
-    if (!raw) return 24 * 60 * 60 * 1000;
-    if (typeof raw === 'number') return raw * 60 * 60 * 1000;
+    if (!raw && raw !== 0) return 24 * 60 * 60 * 1000;
+    if (typeof raw === 'number') {
+      if (raw === 0) return 0;
+      return raw * 60 * 60 * 1000;
+    }
     const s = String(raw).trim().toLowerCase();
+    // Bare "0" (no unit suffix) = explicit zero, used e.g. for past: '0'
+    if (s === '0') return 0;
     const n = parseFloat(s);
     if (isNaN(n) || n <= 0) return 24 * 60 * 60 * 1000;
     if (s.endsWith('d')) return n * 24 * 60 * 60 * 1000;
@@ -102,21 +107,23 @@
   }
 
   // ─── Tick label formatter ─────────────────────────────────────────────────────
-  function tickLabel(tsMs, isFirst, durationMs) {
+  // isNow: true when the tick represents the current moment (shows "Maint." / "Auj.")
+  // isFirst: true when the tick is at the very start of the displayed window
+  function tickLabel(tsMs, isFirst, durationMs, isNow = false) {
     const d = new Date(tsMs);
     if (durationMs <= 3 * 60 * 60 * 1000) {
-      return isFirst
+      return isNow
         ? 'Maint.'
         : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
     }
     if (durationMs <= 7 * 24 * 60 * 60 * 1000) {
       const hh = d.getHours();
-      if (durationMs > 24 * 60 * 60 * 1000 && hh === 0) {
+      if (durationMs > 24 * 60 * 60 * 1000 && hh === 0 && !isNow) {
         return d.toLocaleDateString('fr-FR', { weekday: 'short' });
       }
-      return isFirst ? 'Maint.' : `${hh}h`;
+      return isNow ? 'Maint.' : `${hh}h`;
     }
-    return isFirst ? 'Auj.' : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+    return isNow ? 'Auj.' : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
   }
 
   // ─── HTML escaping ────────────────────────────────────────────────────────────
@@ -162,6 +169,7 @@
       this._config = {
         calendars: groups,
         duration: config.duration ?? '24h',
+        past: config.past ?? '0',
         default_color: config.default_color || '#444444',
         title: config.title ?? null,
         show_title: config.show_title !== false,
@@ -195,8 +203,10 @@
       this._lastFetch = Date.now();
 
       const durationMs = parseDuration(this._config.duration);
-      const startMs = Date.now();
-      const endMs = startMs + durationMs + 60 * 60 * 1000;
+      const pastMs = parseDuration(this._config.past);
+      const nowMs = Date.now();
+      const startMs = nowMs - pastMs;
+      const endMs = nowMs + durationMs + 60 * 60 * 1000;
       const start = new Date(startMs).toISOString();
       const end = new Date(endMs).toISOString();
 
@@ -237,21 +247,25 @@
 
       const nowMs = Date.now();
       const durationMs = parseDuration(this._config.duration);
+      const pastMs = parseDuration(this._config.past);
+      const totalMs = pastMs + durationMs;
+      const windowStartMs = nowMs - pastMs;
       const defaultColor = this._config.default_color;
       const groups = this._config.calendars;
+      const hasPast = pastMs > 0;
 
-      // Adaptive step: ~1440 samples max
-      const STEP_MS = Math.max(60 * 1000, Math.ceil(durationMs / 1440 / 60000) * 60000);
+      // Adaptive step: ~1440 samples max over the full window
+      const STEP_MS = Math.max(60 * 1000, Math.ceil(totalMs / 1440 / 60000) * 60000);
 
       const friseEl = root.getElementById('frise-bar');
       if (!friseEl) return;
 
-      // Build color segments
+      // Build color segments over the full window [windowStartMs, nowMs + durationMs]
       const segments = [];
       let curColor = null;
-      let curStart = nowMs;
+      let curStart = windowStartMs;
 
-      for (let t = nowMs; t <= nowMs + durationMs; t += STEP_MS) {
+      for (let t = windowStartMs; t <= nowMs + durationMs; t += STEP_MS) {
         const c = colorAt(t, groups, this._eventsByEntity, defaultColor);
         if (c !== curColor) {
           if (curColor !== null) segments.push({ color: curColor, from: curStart, to: t });
@@ -264,7 +278,7 @@
       friseEl.innerHTML = '';
       segments.forEach(seg => {
         const div = document.createElement('div');
-        const pct = (seg.to - seg.from) / durationMs * 100;
+        const pct = (seg.to - seg.from) / totalMs * 100;
         div.style.cssText = `flex:0 0 ${pct.toFixed(3)}%;height:100%;background:${seg.color};`;
         const fromStr = new Date(seg.from).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
         const toStr   = new Date(seg.to).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -272,29 +286,54 @@
         friseEl.appendChild(div);
       });
 
+      // Now-marker: render inside frise-wrap when past is active
+      const friseWrap = root.querySelector('.frise-wrap');
+      if (friseWrap) {
+        // Remove any existing marker before re-rendering
+        friseWrap.querySelector('.now-marker')?.remove();
+        if (hasPast) {
+          const marker = document.createElement('div');
+          marker.className = 'now-marker';
+          const nowPct = pastMs / totalMs * 100;
+          marker.style.cssText = `position:absolute;top:0;bottom:0;left:${nowPct.toFixed(3)}%;width:2px;background:rgba(255,255,255,0.85);pointer-events:none;z-index:2;`;
+          friseWrap.appendChild(marker);
+        }
+      }
+
       // Time labels
       const labelsEl = root.getElementById('frise-labels');
       if (!labelsEl) return;
 
       labelsEl.innerHTML = '';
-      const tickMs = chooseTickInterval(durationMs);
-      const ticks = [0];
-      const firstTick = Math.ceil(nowMs / tickMs) * tickMs;
+      // Choose tick interval based on the total visible window
+      const tickMs = chooseTickInterval(totalMs);
+
+      // Build ticks relative to windowStartMs (offset 0 = start of window)
+      const ticks = [0]; // always include start
+      const firstTick = Math.ceil(windowStartMs / tickMs) * tickMs;
       for (let t = firstTick; t < nowMs + durationMs; t += tickMs) {
-        ticks.push(t - nowMs);
+        ticks.push(t - windowStartMs);
       }
-      ticks.push(durationMs);
+      ticks.push(totalMs); // always include end
+
+      // Add "now" tick if past is active and not already present
+      if (hasPast) {
+        ticks.push(pastMs);
+      }
 
       const unique = [...new Set(ticks)].sort((a, b) => a - b);
       unique.forEach(offsetMs => {
         const span = document.createElement('span');
-        const tsMs = nowMs + offsetMs;
-        const pct = offsetMs / durationMs * 100;
-        const label = tickLabel(tsMs, offsetMs === 0, durationMs);
+        const tsMs = windowStartMs + offsetMs;
+        const pct = offsetMs / totalMs * 100;
+        const isWindowStart = offsetMs === 0;
+        // isNowMarker: marks "maintenant" — at windowStart when no past, or at pastMs offset when past active
+        const isNowMarker = hasPast ? offsetMs === pastMs : isWindowStart;
+        const label = tickLabel(tsMs, isWindowStart, totalMs, isNowMarker);
         let css = 'position:absolute;font-size:10px;color:#aaa;white-space:nowrap;';
-        if (offsetMs === 0) {
+        if (isWindowStart) {
           css += 'left:0%;';
-        } else if (offsetMs === durationMs) {
+        } else if (offsetMs === totalMs) {
           css += 'left:100%;transform:translateX(-100%);';
         } else {
           css += `left:${pct.toFixed(2)}%;transform:translateX(-50%);`;
@@ -328,6 +367,7 @@
         }
         .frise-wrap { position: relative; }
         .frise-bar { display: flex; height: 36px; border-radius: 6px; overflow: hidden; width: 100%; }
+        .now-marker { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,0.85); pointer-events: none; z-index: 2; }
         .labels-row { position: relative; height: 18px; margin-top: 4px; }
         .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
         .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px;
@@ -477,9 +517,14 @@
 
         <h3>Durée</h3>
         <div class="field">
-          <label>Durée de la frise</label>
+          <label>Durée de la frise (futur)</label>
           <input id="duration" type="text" value="${this._esc(cfg.duration || '24h')}" placeholder="24h  90m  7d" />
           <span class="hint">Exemples : 24h, 90m, 7d, 48h</span>
+        </div>
+        <div class="field">
+          <label>Passé affiché (avant maintenant)</label>
+          <input id="past" type="text" value="${this._esc(cfg.past ?? '0')}" placeholder="0  2h  30m  1d" />
+          <span class="hint">Exemples : 0 (désactivé), 2h, 30m, 1d — affiche un repère "maintenant"</span>
         </div>
 
         <h3>Affichage</h3>
@@ -606,7 +651,7 @@
         this._fireChange();
       });
 
-      ['duration', 'title', 'default_color', 'default_color_text'].forEach(id => {
+      ['duration', 'past', 'title', 'default_color', 'default_color_text'].forEach(id => {
         root.getElementById(id)?.addEventListener('change', () => this._fireChange());
       });
 
@@ -652,6 +697,7 @@
         ...this._config,
         calendars,
         duration: get('duration') || '24h',
+        past: get('past') || '0',
         title: get('title') || undefined,
         show_title: checked('show_title'),
         show_legend: checked('show_legend'),
