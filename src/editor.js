@@ -101,9 +101,14 @@ export class HaTimelineCardEditor extends HTMLElement {
 
         <h3>Durée</h3>
         <div class="field">
-          <label>Durée de la frise</label>
+          <label>Durée de la frise (futur)</label>
           <input id="duration" type="text" value="${this._esc(cfg.duration || '24h')}" placeholder="24h  90m  7d" />
           <span class="hint">Exemples : 24h, 90m, 7d, 48h</span>
+        </div>
+        <div class="field">
+          <label>Passé affiché (avant maintenant)</label>
+          <input id="past" type="text" value="${this._esc(cfg.past ?? '0')}" placeholder="0  2h  30m  1d" />
+          <span class="hint">Exemples : 0 (désactivé), 2h, 30m, 1d — affiche un repère "maintenant"</span>
         </div>
 
         <h3>Affichage</h3>
@@ -230,7 +235,7 @@ export class HaTimelineCardEditor extends HTMLElement {
       this._fireChange();
     });
 
-    ['duration', 'title', 'default_color', 'default_color_text'].forEach(id => {
+    ['duration', 'past', 'title', 'default_color', 'default_color_text'].forEach(id => {
       root.getElementById(id)?.addEventListener('change', () => this._fireChange());
     });
 
@@ -276,6 +281,7 @@ export class HaTimelineCardEditor extends HTMLElement {
       ...this._config,
       calendars,
       duration: get('duration') || '24h',
+      past: get('past') || '0',
       title: get('title') || undefined,
       show_title: checked('show_title'),
       show_legend: checked('show_legend'),

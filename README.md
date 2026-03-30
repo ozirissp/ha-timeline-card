@@ -2,7 +2,7 @@
 
 A Home Assistant custom Lovelace card that displays a generic, color-coded horizontal timeline of calendar events.
 
-Supports multiple calendars, multi-entity groups, configurable duration, optional title and legend, and a full visual editor — no YAML required.
+Supports multiple calendars, multi-entity groups, configurable duration, optional past window with a visual "now" marker, optional title and legend, and a full visual editor — no YAML required.
 
 ## Features
 
@@ -10,6 +10,7 @@ Supports multiple calendars, multi-entity groups, configurable duration, optiona
 - **Multi-entity groups**: merge several calendars into a single color/label
 - Priority-based overlap: the first group in the list wins when events overlap
 - Flexible duration: `24h`, `90m`, `7d`, etc.
+- **Past window**: display history before "now" with a visual "now" marker (`past` option)
 - Optional title and legend (individually show/hide)
 - Visual editor (no YAML required)
 - Refreshes display every 30 s; re-fetches calendar data every 5 min
@@ -59,6 +60,22 @@ calendars:
     label: Congés
 ```
 
+### Past window (history before now)
+
+Use `past` to display events from the past in addition to the future. A thin vertical marker indicates the current moment on the timeline.
+
+```yaml
+type: custom:ha-timeline-card
+duration: 6h      # show 6 hours into the future
+past: 2h          # show 2 hours of history before now
+calendars:
+  - entity: calendar.my_calendar
+    color: "#5DCAA5"
+    label: Mon calendrier
+```
+
+The total visible window is `past + duration` (8 hours in the example above). The "now" marker appears at 25% from the left (2h / 8h).
+
 ### Full example
 
 ```yaml
@@ -73,6 +90,9 @@ show_legend: true
 
 # Duration: number + unit  (h = hours, m = minutes, d = days)
 duration: 24h
+
+# Past window: show history before now (0 = disabled, shows no past)
+past: 2h
 
 # Color for time slots not covered by any event
 default_color: "#444444"
@@ -97,7 +117,8 @@ calendars:
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `calendars` | list | **required** | List of calendar groups (see below) |
-| `duration` | string | `24h` | Timeline window — e.g. `90m`, `24h`, `7d` |
+| `duration` | string | `24h` | Future window — e.g. `90m`, `24h`, `7d` |
+| `past` | string | `0` | Past window before now — e.g. `0` (disabled), `2h`, `30m`, `1d`. Adds a visual "now" marker when > 0 |
 | `default_color` | string | `#444444` | Color for time slots with no event |
 | `title` | string | — | Card title (empty = no title) |
 | `show_title` | boolean | `true` | Show/hide the title |
@@ -114,13 +135,16 @@ calendars:
 
 > Use either `entity` (single) or `entities` (multiple) — not both. Both forms are fully supported and interchangeable.
 
-### Duration format
+### Duration / Past format
+
+Both `duration` and `past` accept the same format:
 
 | Value | Meaning |
 |---|---|
+| `0` | Zero / disabled (only valid for `past`) |
 | `30m` | 30 minutes |
 | `6h` | 6 hours |
-| `24h` | 24 hours (default) |
+| `24h` | 24 hours (`duration` default) |
 | `3d` | 3 days |
 
 ### Priority (overlapping events)

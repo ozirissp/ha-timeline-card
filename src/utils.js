@@ -9,9 +9,14 @@ export const DEFAULT_COLORS = [
 // Parses strings like "24h", "90m", "7d", "30s" → milliseconds
 // Falls back to numeric value treated as hours for backward compatibility.
 export function parseDuration(raw) {
-  if (!raw) return 24 * 60 * 60 * 1000;
-  if (typeof raw === 'number') return raw * 60 * 60 * 1000;
+  if (!raw && raw !== 0) return 24 * 60 * 60 * 1000;
+  if (typeof raw === 'number') {
+    if (raw === 0) return 0;
+    return raw * 60 * 60 * 1000;
+  }
   const s = String(raw).trim().toLowerCase();
+  // Bare "0" (no unit suffix) = explicit zero, used e.g. for past: '0'
+  if (s === '0') return 0;
   const n = parseFloat(s);
   if (isNaN(n) || n <= 0) return 24 * 60 * 60 * 1000;
   if (s.endsWith('d')) return n * 24 * 60 * 60 * 1000;
@@ -94,21 +99,23 @@ export function chooseTickInterval(durationMs) {
 }
 
 // ─── Tick label formatter ─────────────────────────────────────────────────────
-export function tickLabel(tsMs, isFirst, durationMs) {
+// isNow: true when the tick represents the current moment (shows "Maint." / "Auj.")
+// isFirst: true when the tick is at the very start of the displayed window
+export function tickLabel(tsMs, isFirst, durationMs, isNow = false) {
   const d = new Date(tsMs);
   if (durationMs <= 3 * 60 * 60 * 1000) {
-    return isFirst
+    return isNow
       ? 'Maint.'
       : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
   if (durationMs <= 7 * 24 * 60 * 60 * 1000) {
     const hh = d.getHours();
-    if (durationMs > 24 * 60 * 60 * 1000 && hh === 0) {
+    if (durationMs > 24 * 60 * 60 * 1000 && hh === 0 && !isNow) {
       return d.toLocaleDateString('fr-FR', { weekday: 'short' });
     }
-    return isFirst ? 'Maint.' : `${hh}h`;
+    return isNow ? 'Maint.' : `${hh}h`;
   }
-  return isFirst ? 'Auj.' : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  return isNow ? 'Auj.' : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 }
 
 // ─── HTML escaping ────────────────────────────────────────────────────────────
