@@ -266,11 +266,14 @@ export class HaTimelineCardEditor extends HTMLElement {
       const entities = [...card.querySelectorAll('.entity-tag')]
         .map(t => t.dataset.entity)
         .filter(Boolean);
-      if (entities.length === 0) return;
       const color = card.querySelector('.grp-color')?.value || '#5DCAA5';
       const label = card.querySelector('.grp-label')?.value?.trim() || '';
-      // Single entity → use `entity` key for cleaner YAML
-      if (entities.length === 1) {
+      // Groups with no entities are kept in the config so they survive
+      // the setConfig() reflection from HA and remain visible in the editor.
+      if (entities.length === 0) {
+        calendars.push({ entities: [], color, label });
+      } else if (entities.length === 1) {
+        // Single entity → use `entity` key for cleaner YAML
         calendars.push({ entity: entities[0], color, label });
       } else {
         calendars.push({ entities, color, label });

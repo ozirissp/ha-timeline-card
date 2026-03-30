@@ -43,12 +43,45 @@ describe('HaTimelineCardEditor._fireChange', () => {
     expect(cal.entity).toBeUndefined();
   });
 
-  it('excludes groups with no entities', () => {
+  it('includes empty groups in emitted config (entities: [])', () => {
+    // Empty groups must survive the HA setConfig() reflection so they remain
+    // visible in the editor while the user adds entities to them.
     const editor = makeEditor({ calendars: [] });
+    // Manually inject a group card with no entity tags into the DOM
+    const calList = editor.shadowRoot.getElementById('cal-list');
+    const card = document.createElement('div');
+    card.className = 'group-card';
+    card.innerHTML = `
+      <div class="group-header">
+        <input type="color" class="grp-color" value="#5DCAA5" />
+        <input type="text" class="grp-label" value="Nouveau groupe" />
+      </div>
+      <div class="entities-wrap"></div>
+    `;
+    calList.appendChild(card);
     const events = [];
     editor.addEventListener('config-changed', e => events.push(e.detail.config));
     editor._fireChange();
-    expect(events[0].calendars).toEqual([]);
+    expect(events[0].calendars).toHaveLength(1);
+    expect(events[0].calendars[0].entities).toEqual([]);
+    expect(events[0].calendars[0].label).toBe('Nouveau groupe');
+  });
+
+  it('new group added via btn-add-group is saved in config', () => {
+    // Regression test: clicking "+ Nouveau groupe" must include the new empty
+    // group in the dispatched config so HA persists it and setConfig() keeps
+    // it visible while the user fills in calendar entities.
+    const editor = makeEditor({ calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }] });
+    const events = [];
+    editor.addEventListener('config-changed', e => events.push(e.detail.config));
+    editor.shadowRoot.getElementById('btn-add-group').click();
+    // The last fired event should contain both the existing group and the new empty one
+    const lastConfig = events[events.length - 1];
+    expect(lastConfig.calendars).toHaveLength(2);
+    // First group: the existing one with an entity
+    expect(lastConfig.calendars[0].entity).toBe('calendar.a');
+    // Second group: the new empty one
+    expect(lastConfig.calendars[1].entities).toEqual([]);
   });
 
   it('preserves duration and default_color in emitted config', () => {
