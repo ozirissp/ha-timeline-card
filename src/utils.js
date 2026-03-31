@@ -126,6 +126,71 @@ export function isMidnightTick(tsMs) {
   return d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0;
 }
 
+// ─── Legend helpers ───────────────────────────────────────────────────────────
+
+// Returns the first active event {start, end} for the given group entities at nowMs,
+// or null if none is active. An event is active when start <= nowMs < end.
+export function getActiveEvent(nowMs, entities, eventsByEntity) {
+  for (const entity of entities) {
+    const evs = eventsByEntity[entity] || [];
+    const found = evs.find(ev => nowMs >= ev.start && nowMs < ev.end);
+    if (found) return found;
+  }
+  return null;
+}
+
+// Returns the nearest upcoming event {start, end} for the given group entities,
+// i.e. the event with the smallest start > nowMs across all entities, or null.
+export function getNextEvent(nowMs, entities, eventsByEntity) {
+  let nearest = null;
+  for (const entity of entities) {
+    const evs = eventsByEntity[entity] || [];
+    for (const ev of evs) {
+      if (ev.start > nowMs) {
+        if (nearest === null || ev.start < nearest.start) {
+          nearest = ev;
+        }
+      }
+    }
+  }
+  return nearest;
+}
+
+// Formats a millisecond duration as a compact string:
+//   < 1h  → "Xmin"   (e.g. "45min")
+//   >= 1h → "Xh"     (e.g. "2h") or "XhYY" (e.g. "1h30") — no trailing "00"
+function _fmtDuration(ms) {
+  const totalMin = Math.round(ms / (60 * 1000));
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m}min`;
+  if (m === 0) return `${h}h`;
+  return `${h}h${String(m).padStart(2, '0')}`;
+}
+
+// Formats a timestamp as "HH:MM".
+function _fmtTime(ms) {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// Returns the legend suffix string for a group at nowMs:
+//   active event  → " · HH:MM – HH:MM"
+//   next event    → " · → HH:MM (Xh30)"
+//   nothing       → ""
+export function formatLegendSuffix(nowMs, group, eventsByEntity) {
+  const active = getActiveEvent(nowMs, group.entities, eventsByEntity);
+  if (active) {
+    return ` · ${_fmtTime(active.start)} – ${_fmtTime(active.end)}`;
+  }
+  const next = getNextEvent(nowMs, group.entities, eventsByEntity);
+  if (next) {
+    const delay = next.start - nowMs;
+    return ` · → ${_fmtTime(next.start)} (${_fmtDuration(delay)})`;
+  }
+  return '';
+}
+
 // ─── HTML escaping ────────────────────────────────────────────────────────────
 export function esc(v) {
   return (v == null ? '' : String(v))

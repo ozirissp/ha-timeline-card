@@ -9,6 +9,7 @@ import {
   chooseTickInterval,
   tickLabel,
   isMidnightTick,
+  formatLegendSuffix,
   esc,
 } from './utils.js';
 
@@ -48,6 +49,7 @@ export class HaTimelineCard extends HTMLElement {
       title: config.title ?? null,
       show_title: config.show_title !== false,
       show_legend: config.show_legend !== false,
+      show_legend_times: config.show_legend_times !== false,
       tick_color:  config.tick_color  || '#aaaaaa',
       now_color:   config.now_color   || '#ffffff',
       tick_height: Math.max(1, parseInt(config.tick_height, 10) || 6),
@@ -233,6 +235,17 @@ export class HaTimelineCard extends HTMLElement {
       return true;
     });
 
+    // ── Legend times update ──────────────────────────────────────────────────
+    if (this._config.show_legend_times) {
+      const root2 = this.shadowRoot;
+      groups.forEach((group, i) => {
+        const span = root2.querySelector(`.legend-info[data-group-idx="${i}"]`);
+        if (span) {
+          span.textContent = formatLegendSuffix(nowMs, group, this._eventsByEntity);
+        }
+      });
+    }
+
     filtered.forEach(offsetMs => {
       const tsMs          = windowStartMs + offsetMs;
       const pct           = offsetMs / totalMs * 100;
@@ -292,9 +305,10 @@ export class HaTimelineCard extends HTMLElement {
 
   _render() {
     const cfg = this._config;
-    const showTitle  = cfg.show_title && cfg.title;
-    const showLegend = cfg.show_legend;
-    const tickHeight = cfg.tick_height;
+    const showTitle       = cfg.show_title && cfg.title;
+    const showLegend      = cfg.show_legend;
+    const showLegendTimes = cfg.show_legend_times;
+    const tickHeight      = cfg.tick_height;
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -319,6 +333,7 @@ export class HaTimelineCard extends HTMLElement {
         .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px;
                        color: var(--secondary-text-color, #aaa); }
         .legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+        .legend-info { opacity: 0.8; font-variant-numeric: tabular-nums; }
       </style>
       <ha-card>
         ${showTitle ? `<div class="card-title">${esc(cfg.title)}</div>` : ''}
@@ -329,10 +344,10 @@ export class HaTimelineCard extends HTMLElement {
         </div>
         ${showLegend ? `
         <div class="legend">
-          ${cfg.calendars.map(g => `
+          ${cfg.calendars.map((g, i) => `
             <div class="legend-item">
               <div class="legend-dot" style="background:${esc(g.color)};"></div>
-              ${esc(g.label)}
+              ${esc(g.label)}${showLegendTimes ? `<span class="legend-info" data-group-idx="${i}"></span>` : ''}
             </div>`).join('')}
         </div>` : ''}
       </ha-card>
