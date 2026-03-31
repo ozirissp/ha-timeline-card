@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { HaTimelineCard } from '../../src/timeline-card.js';
 
 if (!customElements.get('ha-timeline-card-tl')) {
@@ -8,6 +8,11 @@ if (!customElements.get('ha-card')) {
   customElements.define('ha-card', class extends HTMLElement {});
 }
 
+// Fix "now" to 2025-04-02 10:00 UTC so the 24h window starts at 10h.
+// firstTick = ceil(10h / 3h) * 3h = 12h → offset = 2h.
+// THRESHOLD = 24h * 0.08 = 1.92h. 2h > 1.92h → offset 0 survives filter → label '•'. ✓
+const FIXED_NOW = new Date(2025, 3, 2, 10, 0, 0, 0).getTime(); // 2025-04-02 10:00 local
+
 function makeCard(config, eventsByEntity = {}) {
   const el = document.createElement('ha-timeline-card-tl');
   document.body.appendChild(el);
@@ -16,6 +21,16 @@ function makeCard(config, eventsByEntity = {}) {
   el._updateTimeline();
   return el;
 }
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(FIXED_NOW);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  document.body.innerHTML = '';
+});
 
 describe('HaTimelineCard._updateTimeline', () => {
   it('renders at least one segment in frise-bar', () => {
@@ -97,13 +112,14 @@ describe('HaTimelineCard._updateTimeline', () => {
     expect(hasColor).toBe(true);
   });
 
-  it('ticks-row height reflects tick_height config', () => {
+  it('ticks-row height reflects tick_height config (scaled for midnight markers)', () => {
+    // The ticks-row is sized at tick_height × 2.5 to accommodate midnight taller marks
     const card = makeCard({
       calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }],
       tick_height: 10,
     });
     const ticksRow = card.shadowRoot.getElementById('frise-ticks');
-    expect(ticksRow.style.height).toBe('10px');
+    expect(ticksRow.style.height).toBe('25px'); // 10 × 2.5
   });
 
   it('now marker always renders as "•" (never as "Maint.")', () => {

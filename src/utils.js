@@ -118,6 +118,14 @@ export function tickLabel(tsMs, isFirst, durationMs, isNow = false) {
   return isNow ? 'Auj.' : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 }
 
+// ─── Midnight tick detector ───────────────────────────────────────────────────
+// Returns true when the given timestamp (ms) falls exactly at local midnight
+// (00:00:00.000), i.e. a day boundary.
+export function isMidnightTick(tsMs) {
+  const d = new Date(tsMs);
+  return d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0;
+}
+
 // ─── HTML escaping ────────────────────────────────────────────────────────────
 export function esc(v) {
   return (v == null ? '' : String(v))

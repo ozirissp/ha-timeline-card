@@ -8,6 +8,7 @@ import {
   colorAt,
   chooseTickInterval,
   tickLabel,
+  isMidnightTick,
   esc,
 } from './utils.js';
 
@@ -187,8 +188,8 @@ export class HaTimelineCard extends HTMLElement {
     labelsEl.innerHTML = '';
     ticksEl.innerHTML  = '';
 
-    // Update ticks-row height from config
-    ticksEl.style.height = `${tickHeight}px`;
+    // Ticks-row must be tall enough for midnight markers (×2.5 the base height)
+    ticksEl.style.height = `${Math.round(tickHeight * 2.5)}px`;
 
     // Choose tick interval based on the total visible window
     const tickMs = chooseTickInterval(totalMs);
@@ -235,12 +236,17 @@ export class HaTimelineCard extends HTMLElement {
 
       // ── Trait sous la barre (dans .ticks-row) — seulement pour les ticks non-now ──
       if (!isNowTick) {
+        const isMidnight = isMidnightTick(tsMs);
+        // Midnight ticks: taller (×2.5) and slightly wider (2px) to mark day changes
+        const markHeight = isMidnight ? Math.round(tickHeight * 2.5) : tickHeight;
+        const markWidth  = isMidnight ? 2 : 1;
+
         const subMark = document.createElement('div');
-        let subCss = `position:absolute;top:0;width:1px;height:${tickHeight}px;background:${color};pointer-events:none;`;
+        let subCss = `position:absolute;top:0;width:${markWidth}px;height:${markHeight}px;background:${color};pointer-events:none;`;
         if (isWindowStart) {
           subCss += 'left:0%;';
         } else if (offsetMs === totalMs) {
-          subCss += 'left:100%;transform:translateX(-1px);';
+          subCss += `left:100%;transform:translateX(-${markWidth}px);`;
         } else {
           subCss += `left:${pct.toFixed(2)}%;transform:translateX(-50%);`;
         }
@@ -301,7 +307,7 @@ export class HaTimelineCard extends HTMLElement {
         .frise-wrap { position: relative; }
         .frise-bar { display: flex; height: 36px; border-radius: 6px; overflow: hidden; width: 100%; }
         .now-marker { position: absolute; top: 0; height: 36px; width: 2px; background: rgba(255,255,255,0.85); pointer-events: none; z-index: 2; }
-        .ticks-row { position: relative; height: ${tickHeight}px; }
+        .ticks-row { position: relative; height: ${Math.round(tickHeight * 2.5)}px; }
         .labels-row { position: relative; height: 18px; margin-top: 2px; }
         .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
         .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px;
