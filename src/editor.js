@@ -133,6 +133,27 @@ export class HaTimelineCardEditor extends HTMLElement {
             <input id="default_color_text" type="text" value="${this._esc(cfg.default_color || '#444444')}" placeholder="#444444" />
           </div>
         </div>
+
+        <h3>Graduation temporelle</h3>
+        <div class="field">
+          <label>Couleur des graduations (heures)</label>
+          <div class="row">
+            <input id="tick_color" type="color" value="${this._esc(cfg.tick_color || '#aaaaaa')}" />
+            <input id="tick_color_text" type="text" value="${this._esc(cfg.tick_color || '#aaaaaa')}" placeholder="#aaaaaa" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Couleur "Maintenant"</label>
+          <div class="row">
+            <input id="now_color" type="color" value="${this._esc(cfg.now_color || '#ffffff')}" />
+            <input id="now_color_text" type="text" value="${this._esc(cfg.now_color || '#ffffff')}" placeholder="#ffffff" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Hauteur des traits (px)</label>
+          <input id="tick_height" type="text" value="${this._esc(cfg.tick_height ?? '6')}" placeholder="6" />
+          <span class="hint">Hauteur de la graduation visible sous la barre (ex : 4, 6, 8)</span>
+        </div>
       </div>
     `;
 
@@ -235,7 +256,7 @@ export class HaTimelineCardEditor extends HTMLElement {
       this._fireChange();
     });
 
-    ['duration', 'past', 'title', 'default_color', 'default_color_text'].forEach(id => {
+    ['duration', 'past', 'title', 'default_color', 'default_color_text', 'tick_height'].forEach(id => {
       root.getElementById(id)?.addEventListener('change', () => this._fireChange());
     });
 
@@ -246,6 +267,26 @@ export class HaTimelineCardEditor extends HTMLElement {
     root.getElementById('default_color_text')?.addEventListener('input', () => {
       const v = root.getElementById('default_color_text').value;
       if (/^#[0-9a-fA-F]{6}$/.test(v)) root.getElementById('default_color').value = v;
+      this._fireChange();
+    });
+
+    root.getElementById('tick_color')?.addEventListener('input', () => {
+      root.getElementById('tick_color_text').value = root.getElementById('tick_color').value;
+      this._fireChange();
+    });
+    root.getElementById('tick_color_text')?.addEventListener('input', () => {
+      const v = root.getElementById('tick_color_text').value;
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) root.getElementById('tick_color').value = v;
+      this._fireChange();
+    });
+
+    root.getElementById('now_color')?.addEventListener('input', () => {
+      root.getElementById('now_color_text').value = root.getElementById('now_color').value;
+      this._fireChange();
+    });
+    root.getElementById('now_color_text')?.addEventListener('input', () => {
+      const v = root.getElementById('now_color_text').value;
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) root.getElementById('now_color').value = v;
       this._fireChange();
     });
 
@@ -289,6 +330,9 @@ export class HaTimelineCardEditor extends HTMLElement {
       show_title: checked('show_title'),
       show_legend: checked('show_legend'),
       default_color: get('default_color') || '#444444',
+      tick_color:  get('tick_color')  || '#aaaaaa',
+      now_color:   get('now_color')   || '#ffffff',
+      tick_height: get('tick_height') || '6',
     };
 
     Object.keys(newConfig).forEach(k => newConfig[k] === undefined && delete newConfig[k]);

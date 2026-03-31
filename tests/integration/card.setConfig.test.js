@@ -64,6 +64,9 @@ describe('HaTimelineCard.setConfig', () => {
     expect(card._config.default_color).toBe('#444444');
     expect(card._config.show_title).toBe(true);
     expect(card._config.show_legend).toBe(true);
+    expect(card._config.tick_color).toBe('#aaaaaa');
+    expect(card._config.now_color).toBe('#ffffff');
+    expect(card._config.tick_height).toBe(6);
   });
 
   it('applies provided optional fields', () => {
@@ -82,15 +85,33 @@ describe('HaTimelineCard.setConfig', () => {
     expect(card._config.show_legend).toBe(false);
   });
 
+  it('applies tick_color, now_color and tick_height when provided', () => {
+    card.setConfig({
+      calendars: [{ entity: 'calendar.x' }],
+      tick_color: '#ff0000',
+      now_color: '#00ff00',
+      tick_height: 10,
+    });
+    expect(card._config.tick_color).toBe('#ff0000');
+    expect(card._config.now_color).toBe('#00ff00');
+    expect(card._config.tick_height).toBe(10);
+  });
+
+  it('clamps tick_height to minimum 1', () => {
+    card.setConfig({ calendars: [{ entity: 'calendar.x' }], tick_height: 0 });
+    expect(card._config.tick_height).toBeGreaterThanOrEqual(1);
+  });
+
   it('resets _lastFetch to 0 on each setConfig call', () => {
     card._lastFetch = 9999999;
     card.setConfig({ calendars: [{ entity: 'calendar.x' }] });
     expect(card._lastFetch).toBe(0);
   });
 
-  it('renders frise-bar and frise-labels into shadowRoot', () => {
+  it('renders frise-bar, frise-ticks and frise-labels into shadowRoot', () => {
     card.setConfig({ calendars: [{ entity: 'calendar.x' }] });
     expect(card.shadowRoot.getElementById('frise-bar')).not.toBeNull();
+    expect(card.shadowRoot.getElementById('frise-ticks')).not.toBeNull();
     expect(card.shadowRoot.getElementById('frise-labels')).not.toBeNull();
   });
 });

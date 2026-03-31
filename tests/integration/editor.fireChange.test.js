@@ -96,4 +96,29 @@ describe('HaTimelineCardEditor._fireChange', () => {
     expect(events[0].duration).toBe('7d');
     expect(events[0].default_color).toBe('#123456');
   });
+
+  it('emits default tick_color, now_color and tick_height when not configured', () => {
+    const editor = makeEditor({ calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }] });
+    const events = [];
+    editor.addEventListener('config-changed', e => events.push(e.detail.config));
+    editor._fireChange();
+    expect(events[0].tick_color).toBe('#aaaaaa');
+    expect(events[0].now_color).toBe('#ffffff');
+    expect(events[0].tick_height).toBe('6');
+  });
+
+  it('preserves custom tick_color, now_color and tick_height in emitted config', () => {
+    const editor = makeEditor({
+      calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }],
+      tick_color: '#ff0000',
+      now_color: '#00ff00',
+      tick_height: '8',
+    });
+    const events = [];
+    editor.addEventListener('config-changed', e => events.push(e.detail.config));
+    editor._fireChange();
+    expect(events[0].tick_color).toBe('#ff0000');
+    expect(events[0].now_color).toBe('#00ff00');
+    expect(events[0].tick_height).toBe('8');
+  });
 });

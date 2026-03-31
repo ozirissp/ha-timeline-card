@@ -174,6 +174,9 @@
         title: config.title ?? null,
         show_title: config.show_title !== false,
         show_legend: config.show_legend !== false,
+        tick_color:  config.tick_color  || '#aaaaaa',
+        now_color:   config.now_color   || '#ffffff',
+        tick_height: Math.max(1, parseInt(config.tick_height, 10) || 6),
       };
 
       this._lastFetch = 0;
@@ -253,6 +256,9 @@
       const defaultColor = this._config.default_color;
       const groups = this._config.calendars;
       const hasPast = pastMs > 0;
+      const tickColor  = this._config.tick_color;
+      const nowColor   = this._config.now_color;
+      const tickHeight = this._config.tick_height;
 
       // Adaptive step: ~1440 samples max over the full window
       const STEP_MS = Math.max(60 * 1000, Math.ceil(totalMs / 1440 / 60000) * 60000);
@@ -295,51 +301,111 @@
           const marker = document.createElement('div');
           marker.className = 'now-marker';
           const nowPct = pastMs / totalMs * 100;
-          marker.style.cssText = `position:absolute;top:0;bottom:0;left:${nowPct.toFixed(3)}%;width:2px;background:rgba(255,255,255,0.85);pointer-events:none;z-index:2;`;
+          marker.style.cssText = `position:absolute;top:0;height:36px;left:${nowPct.toFixed(3)}%;width:2px;background:rgba(255,255,255,0.85);pointer-events:none;z-index:2;`;
           friseWrap.appendChild(marker);
         }
       }
 
-      // Time labels
-      const labelsEl = root.getElementById('frise-labels');
-      if (!labelsEl) return;
+      // ── Tick marks + labels ──────────────────────────────────────────────────
+      const labelsEl  = root.getElementById('frise-labels');
+      const ticksEl   = root.getElementById('frise-ticks');
+      if (!labelsEl || !ticksEl) return;
 
       labelsEl.innerHTML = '';
+      ticksEl.innerHTML  = '';
+
+      // Update ticks-row height from config
+      ticksEl.style.height = `${tickHeight}px`;
+
       // Choose tick interval based on the total visible window
       const tickMs = chooseTickInterval(totalMs);
 
-      // Build ticks relative to windowStartMs (offset 0 = start of window)
-      const ticks = [0]; // always include start
+      // Build ticks (offsets in ms relative to windowStartMs)
+      const rawTicks = [0]; // always include start
       const firstTick = Math.ceil(windowStartMs / tickMs) * tickMs;
       for (let t = firstTick; t < nowMs + durationMs; t += tickMs) {
-        ticks.push(t - windowStartMs);
+        rawTicks.push(t - windowStartMs);
       }
-      ticks.push(totalMs); // always include end
-
-      // Add "now" tick if past is active and not already present
+      rawTicks.push(totalMs); // always include end
       if (hasPast) {
-        ticks.push(pastMs);
+        rawTicks.push(pastMs); // "now" tick
       }
 
-      const unique = [...new Set(ticks)].sort((a, b) => a - b);
-      unique.forEach(offsetMs => {
-        const span = document.createElement('span');
-        const tsMs = windowStartMs + offsetMs;
-        const pct = offsetMs / totalMs * 100;
-        const isWindowStart = offsetMs === 0;
-        // isNowMarker: marks "maintenant" — at windowStart when no past, or at pastMs offset when past active
-        const isNowMarker = hasPast ? offsetMs === pastMs : isWindowStart;
-        const label = tickLabel(tsMs, isWindowStart, totalMs, isNowMarker);
-        let css = 'position:absolute;font-size:10px;color:#aaa;white-space:nowrap;';
-        if (isWindowStart) {
-          css += 'left:0%;';
-        } else if (offsetMs === totalMs) {
-          css += 'left:100%;transform:translateX(-100%);';
-        } else {
-          css += `left:${pct.toFixed(2)}%;transform:translateX(-50%);`;
+      const unique = [...new Set(rawTicks)].sort((a, b) => a - b);
+
+      // Identify regular ticks (not borders, not pastMs)
+      const regularTicks = unique.filter(o => o !== 0 && o !== totalMs && !(hasPast && o === pastMs));
+
+      // Collision threshold: 8% of total width
+      const THRESHOLD = totalMs * 0.08;
+
+      // Helper: nearest regular tick distance
+      const nearestRegularDist = (offsetMs) => {
+        if (regularTicks.length === 0) return Infinity;
+        return Math.min(...regularTicks.map(r => Math.abs(r - offsetMs)));
+      };
+
+      // Is the "now" tick (pastMs) too close to a regular tick?
+      const isNowClose = hasPast && nearestRegularDist(pastMs) < THRESHOLD;
+
+      // Filter out border ticks that are too close to a regular tick
+      const filtered = unique.filter(offsetMs => {
+        if (offsetMs === 0 || offsetMs === totalMs) {
+          return nearestRegularDist(offsetMs) >= THRESHOLD;
         }
-        span.textContent = label;
-        span.style.cssText = css;
+        return true;
+      });
+
+      filtered.forEach(offsetMs => {
+        const tsMs        = windowStartMs + offsetMs;
+        const pct         = offsetMs / totalMs * 100;
+        const isWindowStart = offsetMs === 0;
+        const isNowTick   = hasPast ? offsetMs === pastMs : isWindowStart;
+        const color       = isNowTick ? nowColor : tickColor;
+
+        // ── Trait dans la barre (bottom de la barre, remonte vers le haut) ──
+        const barMark = document.createElement('div');
+        let barCss = `position:absolute;bottom:0;width:1px;height:8px;background:${color};opacity:0.45;pointer-events:none;z-index:3;`;
+        if (isWindowStart) {
+          barCss += 'left:0%;';
+        } else if (offsetMs === totalMs) {
+          barCss += 'left:100%;transform:translateX(-1px);';
+        } else {
+          barCss += `left:${pct.toFixed(2)}%;transform:translateX(-50%);`;
+        }
+        barMark.style.cssText = barCss;
+        friseEl.appendChild(barMark);
+
+        // ── Trait sous la barre (dans .ticks-row) ──
+        const subMark = document.createElement('div');
+        let subCss = `position:absolute;top:0;width:1px;height:${tickHeight}px;background:${color};pointer-events:none;`;
+        if (isWindowStart) {
+          subCss += 'left:0%;';
+        } else if (offsetMs === totalMs) {
+          subCss += 'left:100%;transform:translateX(-1px);';
+        } else {
+          subCss += `left:${pct.toFixed(2)}%;transform:translateX(-50%);`;
+        }
+        subMark.style.cssText = subCss;
+        ticksEl.appendChild(subMark);
+
+        // ── Label ──
+        const span = document.createElement('span');
+        // "now" tick trop proche d'un régulier → point, sinon label texte
+        const labelText = (isNowTick && isNowClose)
+          ? '•'
+          : tickLabel(tsMs, isWindowStart, totalMs, isNowTick);
+
+        let labelCss = `position:absolute;font-size:10px;white-space:nowrap;color:${color};`;
+        if (isWindowStart) {
+          labelCss += 'left:0%;';
+        } else if (offsetMs === totalMs) {
+          labelCss += 'left:100%;transform:translateX(-100%);';
+        } else {
+          labelCss += `left:${pct.toFixed(2)}%;transform:translateX(-50%);`;
+        }
+        span.textContent = labelText;
+        span.style.cssText = labelCss;
         labelsEl.appendChild(span);
       });
     }
@@ -348,8 +414,9 @@
 
     _render() {
       const cfg = this._config;
-      const showTitle = cfg.show_title && cfg.title;
+      const showTitle  = cfg.show_title && cfg.title;
       const showLegend = cfg.show_legend;
+      const tickHeight = cfg.tick_height;
 
       this.shadowRoot.innerHTML = `
       <style>
@@ -366,9 +433,12 @@
           margin-bottom: 12px;
         }
         .frise-wrap { position: relative; }
-        .frise-bar { display: flex; height: 36px; border-radius: 6px; overflow: hidden; width: 100%; }
-        .now-marker { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,0.85); pointer-events: none; z-index: 2; }
-        .labels-row { position: relative; height: 18px; margin-top: 4px; }
+        /* Wrapper pour préserver les border-radius tout en laissant dépasser les traits */
+        .frise-bar-wrap { border-radius: 6px; overflow: hidden; width: 100%; }
+        .frise-bar { display: flex; height: 36px; width: 100%; position: relative; }
+        .now-marker { position: absolute; top: 0; height: 36px; width: 2px; background: rgba(255,255,255,0.85); pointer-events: none; z-index: 2; }
+        .ticks-row { position: relative; height: ${tickHeight}px; }
+        .labels-row { position: relative; height: 18px; margin-top: 2px; }
         .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
         .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px;
                        color: var(--secondary-text-color, #aaa); }
@@ -377,9 +447,12 @@
       <ha-card>
         ${showTitle ? `<div class="card-title">${esc(cfg.title)}</div>` : ''}
         <div class="frise-wrap">
-          <div id="frise-bar" class="frise-bar"></div>
+          <div class="frise-bar-wrap">
+            <div id="frise-bar" class="frise-bar"></div>
+          </div>
+          <div id="frise-ticks" class="ticks-row"></div>
+          <div id="frise-labels" class="labels-row"></div>
         </div>
-        <div id="frise-labels" class="labels-row"></div>
         ${showLegend ? `
         <div class="legend">
           ${cfg.calendars.map(g => `
@@ -549,6 +622,27 @@
             <input id="default_color_text" type="text" value="${this._esc(cfg.default_color || '#444444')}" placeholder="#444444" />
           </div>
         </div>
+
+        <h3>Graduation temporelle</h3>
+        <div class="field">
+          <label>Couleur des graduations (heures)</label>
+          <div class="row">
+            <input id="tick_color" type="color" value="${this._esc(cfg.tick_color || '#aaaaaa')}" />
+            <input id="tick_color_text" type="text" value="${this._esc(cfg.tick_color || '#aaaaaa')}" placeholder="#aaaaaa" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Couleur "Maintenant"</label>
+          <div class="row">
+            <input id="now_color" type="color" value="${this._esc(cfg.now_color || '#ffffff')}" />
+            <input id="now_color_text" type="text" value="${this._esc(cfg.now_color || '#ffffff')}" placeholder="#ffffff" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Hauteur des traits (px)</label>
+          <input id="tick_height" type="text" value="${this._esc(cfg.tick_height ?? '6')}" placeholder="6" />
+          <span class="hint">Hauteur de la graduation visible sous la barre (ex : 4, 6, 8)</span>
+        </div>
       </div>
     `;
 
@@ -651,7 +745,7 @@
         this._fireChange();
       });
 
-      ['duration', 'past', 'title', 'default_color', 'default_color_text'].forEach(id => {
+      ['duration', 'past', 'title', 'default_color', 'default_color_text', 'tick_height'].forEach(id => {
         root.getElementById(id)?.addEventListener('change', () => this._fireChange());
       });
 
@@ -662,6 +756,26 @@
       root.getElementById('default_color_text')?.addEventListener('input', () => {
         const v = root.getElementById('default_color_text').value;
         if (/^#[0-9a-fA-F]{6}$/.test(v)) root.getElementById('default_color').value = v;
+        this._fireChange();
+      });
+
+      root.getElementById('tick_color')?.addEventListener('input', () => {
+        root.getElementById('tick_color_text').value = root.getElementById('tick_color').value;
+        this._fireChange();
+      });
+      root.getElementById('tick_color_text')?.addEventListener('input', () => {
+        const v = root.getElementById('tick_color_text').value;
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) root.getElementById('tick_color').value = v;
+        this._fireChange();
+      });
+
+      root.getElementById('now_color')?.addEventListener('input', () => {
+        root.getElementById('now_color_text').value = root.getElementById('now_color').value;
+        this._fireChange();
+      });
+      root.getElementById('now_color_text')?.addEventListener('input', () => {
+        const v = root.getElementById('now_color_text').value;
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) root.getElementById('now_color').value = v;
         this._fireChange();
       });
 
@@ -705,6 +819,9 @@
         show_title: checked('show_title'),
         show_legend: checked('show_legend'),
         default_color: get('default_color') || '#444444',
+        tick_color:  get('tick_color')  || '#aaaaaa',
+        now_color:   get('now_color')   || '#ffffff',
+        tick_height: get('tick_height') || '6',
       };
 
       Object.keys(newConfig).forEach(k => newConfig[k] === undefined && delete newConfig[k]);
