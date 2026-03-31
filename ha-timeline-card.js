@@ -134,6 +134,71 @@
     return d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0;
   }
 
+  // ─── Legend helpers ───────────────────────────────────────────────────────────
+
+  // Returns the first active event {start, end} for the given group entities at nowMs,
+  // or null if none is active. An event is active when start <= nowMs < end.
+  function getActiveEvent(nowMs, entities, eventsByEntity) {
+    for (const entity of entities) {
+      const evs = eventsByEntity[entity] || [];
+      const found = evs.find(ev => nowMs >= ev.start && nowMs < ev.end);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  // Returns the nearest upcoming event {start, end} for the given group entities,
+  // i.e. the event with the smallest start > nowMs across all entities, or null.
+  function getNextEvent(nowMs, entities, eventsByEntity) {
+    let nearest = null;
+    for (const entity of entities) {
+      const evs = eventsByEntity[entity] || [];
+      for (const ev of evs) {
+        if (ev.start > nowMs) {
+          if (nearest === null || ev.start < nearest.start) {
+            nearest = ev;
+          }
+        }
+      }
+    }
+    return nearest;
+  }
+
+  // Formats a millisecond duration as a compact string:
+  //   < 1h  → "Xmin"   (e.g. "45min")
+  //   >= 1h → "Xh"     (e.g. "2h") or "XhYY" (e.g. "1h30") — no trailing "00"
+  function _fmtDuration(ms) {
+    const totalMin = Math.round(ms / (60 * 1000));
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    if (h === 0) return `${m}min`;
+    if (m === 0) return `${h}h`;
+    return `${h}h${String(m).padStart(2, '0')}`;
+  }
+
+  // Formats a timestamp as "HH:MM".
+  function _fmtTime(ms) {
+    const d = new Date(ms);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+
+  // Returns the legend suffix string for a group at nowMs:
+  //   active event  → " · HH:MM – HH:MM"
+  //   next event    → " · → HH:MM (Xh30)"
+  //   nothing       → ""
+  function formatLegendSuffix(nowMs, group, eventsByEntity) {
+    const active = getActiveEvent(nowMs, group.entities, eventsByEntity);
+    if (active) {
+      return ` · ${_fmtTime(active.start)} – ${_fmtTime(active.end)}`;
+    }
+    const next = getNextEvent(nowMs, group.entities, eventsByEntity);
+    if (next) {
+      const delay = next.start - nowMs;
+      return ` · → ${_fmtTime(next.start)} (${_fmtDuration(delay)})`;
+    }
+    return '';
+  }
+
   // ─── HTML escaping ────────────────────────────────────────────────────────────
   function esc(v) {
     return (v == null ? '' : String(v))
@@ -182,6 +247,7 @@
         title: config.title ?? null,
         show_title: config.show_title !== false,
         show_legend: config.show_legend !== false,
+        show_legend_times: config.show_legend_times !== false,
         tick_color:  config.tick_color  || '#aaaaaa',
         now_color:   config.now_color   || '#ffffff',
         tick_height: Math.max(1, parseInt(config.tick_height, 10) || 6),
@@ -367,6 +433,17 @@
         return true;
       });
 
+      // ── Legend times update ──────────────────────────────────────────────────
+      if (this._config.show_legend_times) {
+        const root2 = this.shadowRoot;
+        groups.forEach((group, i) => {
+          const span = root2.querySelector(`.legend-info[data-group-idx="${i}"]`);
+          if (span) {
+            span.textContent = formatLegendSuffix(nowMs, group, this._eventsByEntity);
+          }
+        });
+      }
+
       filtered.forEach(offsetMs => {
         const tsMs          = windowStartMs + offsetMs;
         const pct           = offsetMs / totalMs * 100;
@@ -426,9 +503,10 @@
 
     _render() {
       const cfg = this._config;
-      const showTitle  = cfg.show_title && cfg.title;
-      const showLegend = cfg.show_legend;
-      const tickHeight = cfg.tick_height;
+      const showTitle       = cfg.show_title && cfg.title;
+      const showLegend      = cfg.show_legend;
+      const showLegendTimes = cfg.show_legend_times;
+      const tickHeight      = cfg.tick_height;
 
       this.shadowRoot.innerHTML = `
       <style>
@@ -453,6 +531,7 @@
         .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px;
                        color: var(--secondary-text-color, #aaa); }
         .legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+        .legend-info { opacity: 0.8; font-variant-numeric: tabular-nums; }
       </style>
       <ha-card>
         ${showTitle ? `<div class="card-title">${esc(cfg.title)}</div>` : ''}
@@ -463,10 +542,10 @@
         </div>
         ${showLegend ? `
         <div class="legend">
-          ${cfg.calendars.map(g => `
+          ${cfg.calendars.map((g, i) => `
             <div class="legend-item">
               <div class="legend-dot" style="background:${esc(g.color)};"></div>
-              ${esc(g.label)}
+              ${esc(g.label)}${showLegendTimes ? `<span class="legend-info" data-group-idx="${i}"></span>` : ''}
             </div>`).join('')}
         </div>` : ''}
       </ha-card>
@@ -620,6 +699,10 @@
         <div class="toggle-row">
           <label for="show_legend">Afficher la légende</label>
           <input id="show_legend" type="checkbox" ${cfg.show_legend !== false ? 'checked' : ''} />
+        </div>
+        <div class="toggle-row">
+          <label for="show_legend_times">Afficher horaires dans la légende</label>
+          <input id="show_legend_times" type="checkbox" ${cfg.show_legend_times !== false ? 'checked' : ''} />
         </div>
 
         <h3>Couleur par défaut</h3>
@@ -792,6 +875,7 @@
         this._fireChange();
       });
       root.getElementById('show_legend')?.addEventListener('change', () => this._fireChange());
+      root.getElementById('show_legend_times')?.addEventListener('change', () => this._fireChange());
     }
 
     _fireChange() {
@@ -826,6 +910,7 @@
         title: get('title') || undefined,
         show_title: checked('show_title'),
         show_legend: checked('show_legend'),
+        show_legend_times: checked('show_legend_times'),
         default_color: get('default_color') || '#444444',
         tick_color:  get('tick_color')  || '#aaaaaa',
         now_color:   get('now_color')   || '#ffffff',

@@ -124,6 +124,10 @@ export class HaTimelineCardEditor extends HTMLElement {
           <label for="show_legend">Afficher la légende</label>
           <input id="show_legend" type="checkbox" ${cfg.show_legend !== false ? 'checked' : ''} />
         </div>
+        <div class="toggle-row">
+          <label for="show_legend_times">Afficher horaires dans la légende</label>
+          <input id="show_legend_times" type="checkbox" ${cfg.show_legend_times !== false ? 'checked' : ''} />
+        </div>
 
         <h3>Couleur par défaut</h3>
         <div class="field">
@@ -295,6 +299,7 @@ export class HaTimelineCardEditor extends HTMLElement {
       this._fireChange();
     });
     root.getElementById('show_legend')?.addEventListener('change', () => this._fireChange());
+    root.getElementById('show_legend_times')?.addEventListener('change', () => this._fireChange());
   }
 
   _fireChange() {
@@ -329,6 +334,7 @@ export class HaTimelineCardEditor extends HTMLElement {
       title: get('title') || undefined,
       show_title: checked('show_title'),
       show_legend: checked('show_legend'),
+      show_legend_times: checked('show_legend_times'),
       default_color: get('default_color') || '#444444',
       tick_color:  get('tick_color')  || '#aaaaaa',
       now_color:   get('now_color')   || '#ffffff',

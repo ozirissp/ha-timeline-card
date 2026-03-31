@@ -2,7 +2,7 @@
 
 A Home Assistant custom Lovelace card that displays a generic, color-coded horizontal timeline of calendar events.
 
-Supports multiple calendars, multi-entity groups, configurable duration, optional past window with a visual "now" marker, optional title and legend, and a full visual editor — no YAML required.
+Supports multiple calendars, multi-entity groups, configurable duration, optional past window with a visual "now" marker, optional title and legend with live event times, and a full visual editor — no YAML required.
 
 ## Features
 
@@ -12,6 +12,7 @@ Supports multiple calendars, multi-entity groups, configurable duration, optiona
 - Flexible duration: `24h`, `90m`, `7d`, etc.
 - **Past window**: display history before "now" with a visual "now" marker (`past` option)
 - Optional title and legend (individually show/hide)
+- **Legend with live event times**: each legend entry shows active event bounds (`· 12:00 – 14:00`) or time until next event (`· → 14:00 (1h30)`)
 - Visual editor (no YAML required)
 - Refreshes display every 30 s; re-fetches calendar data every 5 min
 - HACS compatible
@@ -87,6 +88,7 @@ show_title: true
 
 # Legend (hidden if show_legend: false)
 show_legend: true
+show_legend_times: true  # show active event bounds or time-to-next in legend
 
 # Duration: number + unit  (h = hours, m = minutes, d = days)
 duration: 24h
@@ -123,6 +125,7 @@ calendars:
 | `title` | string | — | Card title (empty = no title) |
 | `show_title` | boolean | `true` | Show/hide the title |
 | `show_legend` | boolean | `true` | Show/hide the legend |
+| `show_legend_times` | boolean | `true` | Show live event times in the legend (see below) |
 
 #### Calendar group object
 
@@ -134,6 +137,27 @@ calendars:
 | `label` | string | entity ID | Legend label |
 
 > Use either `entity` (single) or `entities` (multiple) — not both. Both forms are fully supported and interchangeable.
+
+### Legend event times
+
+When `show_legend_times: true` (the default), each legend entry displays dynamic time information next to the group label:
+
+| Situation | Display example |
+|---|---|
+| An event is currently active | `HC · 12:00 – 14:00` |
+| No active event, next event upcoming | `HC · → 14:00 (1h30)` |
+| No event in the visible window | `HC` (label only) |
+
+The suffix is updated automatically at every timeline refresh (every 30 s).
+
+- **Active event**: shows the start and end time of the current event (`HH:MM – HH:MM`).
+- **Next event**: shows the start time of the nearest upcoming event and the time remaining in parentheses — `Xh` or `Xh30` for durations ≥ 1 h, `Xmin` for durations < 1 h.
+
+To disable:
+
+```yaml
+show_legend_times: false
+```
 
 ### Duration / Past format
 
