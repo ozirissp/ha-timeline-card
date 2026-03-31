@@ -330,7 +330,13 @@
 
       // Build ticks (offsets in ms relative to windowStartMs)
       const rawTicks = [0]; // always include start
-      const firstTick = Math.ceil(windowStartMs / tickMs) * tickMs;
+      // Align firstTick to LOCAL midnight, not to the Unix epoch (UTC).
+      // Without this, in non-UTC timezones (e.g. UTC+1/+2) local midnight falls
+      // between two epoch-aligned multiples of tickMs and is never generated.
+      const _localMidnight = new Date(windowStartMs);
+      _localMidnight.setHours(0, 0, 0, 0);
+      const _localMidnightMs = _localMidnight.getTime();
+      const firstTick = _localMidnightMs + Math.ceil((windowStartMs - _localMidnightMs) / tickMs) * tickMs;
       for (let t = firstTick; t < nowMs + durationMs; t += tickMs) {
         rawTicks.push(t - windowStartMs);
       }
