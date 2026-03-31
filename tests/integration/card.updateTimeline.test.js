@@ -44,9 +44,7 @@ describe('HaTimelineCard._updateTimeline', () => {
   it('segment percentages sum to ~100%', () => {
     const card = makeCard({ calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }] });
     const segments = [...card.shadowRoot.getElementById('frise-bar').children];
-    // Filter out tick-bar-marks (they use position:absolute, no flexBasis)
-    const colorSegments = segments.filter(s => s.style.flexBasis !== '');
-    const total = colorSegments.reduce((sum, seg) => {
+    const total = segments.reduce((sum, seg) => {
       const pct = parseFloat(seg.style.flexBasis);
       return sum + pct;
     }, 0);
@@ -59,13 +57,14 @@ describe('HaTimelineCard._updateTimeline', () => {
     expect(labels.length).toBeGreaterThan(0);
   });
 
-  it('first label is "Maint." for standard durations', () => {
+  it('first label is "•" (now marker) for standard durations without past', () => {
+    // Without past, windowStart = now → first tick is the now marker → always "•"
     const card = makeCard({
       calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }],
       duration: '24h',
     });
     const labels = [...card.shadowRoot.getElementById('frise-labels').children];
-    expect(labels[0].textContent).toBe('Maint.');
+    expect(labels[0].textContent).toBe('•');
   });
 
   it('renders tick marks in frise-ticks', () => {
@@ -74,12 +73,13 @@ describe('HaTimelineCard._updateTimeline', () => {
     expect(ticks.length).toBeGreaterThan(0);
   });
 
-  it('renders tick-bar-marks inside frise-bar', () => {
+  it('frise-bar contains only flex color segments (no tick-bar-marks)', () => {
     const card = makeCard({ calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }] });
     const all = [...card.shadowRoot.getElementById('frise-bar').children];
-    // tick-bar-marks have position:absolute (no flexBasis)
-    const barMarks = all.filter(s => s.style.flexBasis === '');
-    expect(barMarks.length).toBeGreaterThan(0);
+    // All children should be color segments (have flexBasis set)
+    all.forEach(child => {
+      expect(child.style.flexBasis).not.toBe('');
+    });
   });
 
   it('tick marks use tick_color by default', () => {
@@ -106,19 +106,29 @@ describe('HaTimelineCard._updateTimeline', () => {
     expect(ticksRow.style.height).toBe('10px');
   });
 
-  it('no label text overlap between border tick and regular tick when close', () => {
-    // With no past (duration 24h), "Maint." is at offset 0 (window start).
-    // The border tick at offset 0 and the first regular tick should not both be labelled
-    // if they are within the 8% threshold — border is filtered out.
+  it('now marker always renders as "•" (never as "Maint.")', () => {
     const card = makeCard({
       calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }],
       duration: '24h',
     });
     const labels = [...card.shadowRoot.getElementById('frise-labels').children];
     const texts = labels.map(l => l.textContent.trim());
-    // No duplicate labels
-    const unique = new Set(texts);
-    expect(unique.size).toBe(texts.length);
+    expect(texts).not.toContain('Maint.');
+    expect(texts).toContain('•');
+  });
+
+  it('now tick does not create a sub-mark in frise-ticks', () => {
+    // Without past, the now tick is at offset 0 (windowStart).
+    // It should NOT produce a sub-mark in frise-ticks (only the dot label).
+    const card = makeCard({
+      calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }],
+      duration: '24h',
+    });
+    // The number of sub-marks should be less than the number of labels
+    // (now tick skips the sub-mark)
+    const subMarks = card.shadowRoot.getElementById('frise-ticks').children.length;
+    const labelCount = card.shadowRoot.getElementById('frise-labels').children.length;
+    expect(subMarks).toBeLessThan(labelCount);
   });
 
   it('renders legend when show_legend is true', () => {

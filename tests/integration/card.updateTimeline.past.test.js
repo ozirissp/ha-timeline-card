@@ -69,32 +69,27 @@ describe('HaTimelineCard._updateTimeline — past window', () => {
       past: '2h',
     });
     const segments = [...card.shadowRoot.getElementById('frise-bar').children];
-    // Filter out tick-bar-marks (position:absolute, no flexBasis) and now-marker
-    const colorSegments = segments.filter(el =>
-      !el.classList.contains('now-marker') && el.style.flexBasis !== ''
-    );
-    const total = colorSegments.reduce((sum, seg) => {
+    // frise-bar contains only color segments (no tick-bar-marks anymore)
+    const total = segments.reduce((sum, seg) => {
       const pct = parseFloat(seg.style.flexBasis);
       return isNaN(pct) ? sum : sum + pct;
     }, 0);
     expect(total).toBeCloseTo(100, 0);
   });
 
-  it('first label in labels row reflects past start (not "Maint.")', () => {
+  it('first label in labels row reflects past start, "•" appears in the middle', () => {
     const card = makeCard({
       calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }],
       duration: '6h',
       past: '2h',
     });
     const labels = [...card.shadowRoot.getElementById('frise-labels').children];
-    // With past active, first tick is NOT "Maint." anymore — it's a time label
-    // and "Maint." (or "•" if close to a regular tick) appears somewhere in the middle
     const texts = labels.map(l => l.textContent.trim());
-    // "Maint." or "•" (collision fallback) should still be present at the now position
-    const hasNowLabel = texts.includes('Maint.') || texts.includes('•');
-    expect(hasNowLabel).toBe(true);
-    // The first label should NOT be "Maint." or "•" when past > 0
-    expect(texts[0]).not.toBe('Maint.');
+    // "•" is always present (now marker is always a dot)
+    expect(texts).toContain('•');
+    // "Maint." is never displayed anymore
+    expect(texts).not.toContain('Maint.');
+    // The first label should NOT be "•" when past > 0 (now is in the middle)
     expect(texts[0]).not.toBe('•');
   });
 
@@ -106,11 +101,7 @@ describe('HaTimelineCard._updateTimeline — past window', () => {
       past: '2h',
     });
     const segments = [...card.shadowRoot.getElementById('frise-bar').children];
-    // Filter out tick-bar-marks (no flexBasis) and now-marker
-    const colorSegments = segments.filter(el =>
-      !el.classList.contains('now-marker') && el.style.flexBasis !== ''
-    );
-    expect(colorSegments.length).toBeGreaterThan(0);
+    expect(segments.length).toBeGreaterThan(0);
   });
 
   it('renders tick marks in frise-ticks with past window', () => {
@@ -123,19 +114,26 @@ describe('HaTimelineCard._updateTimeline — past window', () => {
     expect(ticks.length).toBeGreaterThan(0);
   });
 
-  it('now tick uses now_color in past mode', () => {
+  it('now tick "•" uses now_color in labels, not in frise-ticks sub-marks', () => {
     const card = makeCard({
       calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }],
       duration: '6h',
       past: '2h',
       now_color: '#ff00ff',
     });
-    const subMarks = [...card.shadowRoot.getElementById('frise-ticks').children];
+    // The "•" label should use now_color
+    const labels = [...card.shadowRoot.getElementById('frise-labels').children];
+    const dotLabel = labels.find(l => l.textContent.trim() === '•');
+    expect(dotLabel).not.toBeUndefined();
     // jsdom may normalise hex to rgb — rgb(255, 0, 255) = #ff00ff
-    const hasNowColor = subMarks.some(m =>
-      m.style.background === '#ff00ff' || m.style.background === 'rgb(255, 0, 255)'
-    );
-    expect(hasNowColor).toBe(true);
+    expect(
+      dotLabel.style.color === '#ff00ff' || dotLabel.style.color === 'rgb(255, 0, 255)'
+    ).toBe(true);
+    // The now tick must NOT produce a sub-mark in frise-ticks
+    const subMarks = [...card.shadowRoot.getElementById('frise-ticks').children];
+    const subMarkCount = subMarks.length;
+    const labelCount = labels.length;
+    expect(subMarkCount).toBeLessThan(labelCount);
   });
 
   it('now-marker is inside frise-wrap (positional context)', () => {

@@ -218,9 +218,6 @@ export class HaTimelineCard extends HTMLElement {
       return Math.min(...regularTicks.map(r => Math.abs(r - offsetMs)));
     };
 
-    // Is the "now" tick (pastMs) too close to a regular tick?
-    const isNowClose = hasPast && nearestRegularDist(pastMs) < THRESHOLD;
-
     // Filter out border ticks that are too close to a regular tick
     const filtered = unique.filter(offsetMs => {
       if (offsetMs === 0 || offsetMs === totalMs) {
@@ -230,50 +227,46 @@ export class HaTimelineCard extends HTMLElement {
     });
 
     filtered.forEach(offsetMs => {
-      const tsMs        = windowStartMs + offsetMs;
-      const pct         = offsetMs / totalMs * 100;
+      const tsMs          = windowStartMs + offsetMs;
+      const pct           = offsetMs / totalMs * 100;
       const isWindowStart = offsetMs === 0;
-      const isNowTick   = hasPast ? offsetMs === pastMs : isWindowStart;
-      const color       = isNowTick ? nowColor : tickColor;
+      const isNowTick     = hasPast ? offsetMs === pastMs : isWindowStart;
+      const color         = isNowTick ? nowColor : tickColor;
 
-      // ── Trait dans la barre (bottom de la barre, remonte vers le haut) ──
-      const barMark = document.createElement('div');
-      let barCss = `position:absolute;bottom:0;width:1px;height:8px;background:${color};opacity:0.45;pointer-events:none;z-index:3;`;
-      if (isWindowStart) {
-        barCss += 'left:0%;';
-      } else if (offsetMs === totalMs) {
-        barCss += 'left:100%;transform:translateX(-1px);';
-      } else {
-        barCss += `left:${pct.toFixed(2)}%;transform:translateX(-50%);`;
+      // ── Trait sous la barre (dans .ticks-row) — seulement pour les ticks non-now ──
+      if (!isNowTick) {
+        const subMark = document.createElement('div');
+        let subCss = `position:absolute;top:0;width:1px;height:${tickHeight}px;background:${color};pointer-events:none;`;
+        if (isWindowStart) {
+          subCss += 'left:0%;';
+        } else if (offsetMs === totalMs) {
+          subCss += 'left:100%;transform:translateX(-1px);';
+        } else {
+          subCss += `left:${pct.toFixed(2)}%;transform:translateX(-50%);`;
+        }
+        subMark.style.cssText = subCss;
+        ticksEl.appendChild(subMark);
       }
-      barMark.style.cssText = barCss;
-      friseEl.appendChild(barMark);
-
-      // ── Trait sous la barre (dans .ticks-row) ──
-      const subMark = document.createElement('div');
-      let subCss = `position:absolute;top:0;width:1px;height:${tickHeight}px;background:${color};pointer-events:none;`;
-      if (isWindowStart) {
-        subCss += 'left:0%;';
-      } else if (offsetMs === totalMs) {
-        subCss += 'left:100%;transform:translateX(-1px);';
-      } else {
-        subCss += `left:${pct.toFixed(2)}%;transform:translateX(-50%);`;
-      }
-      subMark.style.cssText = subCss;
-      ticksEl.appendChild(subMark);
 
       // ── Label ──
       const span = document.createElement('span');
-      // "now" tick trop proche d'un régulier → point, sinon label texte
-      const labelText = (isNowTick && isNowClose)
+      // "now" tick → toujours un gros point •, jamais un trait
+      const labelText = isNowTick
         ? '•'
-        : tickLabel(tsMs, isWindowStart, totalMs, isNowTick);
+        : tickLabel(tsMs, isWindowStart, totalMs, false);
 
-      let labelCss = `position:absolute;font-size:10px;white-space:nowrap;color:${color};`;
+      // Taille : gros point pour now (22px), texte normal pour les autres (10px)
+      const fontSize = isNowTick ? '22px' : '10px';
+      // Ajustement vertical : le • à 22px dépasse un peu, on le remonte légèrement
+      const lineHeight = isNowTick ? '1' : 'inherit';
+
+      let labelCss = `position:absolute;font-size:${fontSize};line-height:${lineHeight};white-space:nowrap;color:${color};`;
       if (isWindowStart) {
         labelCss += 'left:0%;';
       } else if (offsetMs === totalMs) {
         labelCss += 'left:100%;transform:translateX(-100%);';
+      } else if (isNowTick) {
+        labelCss += `left:${pct.toFixed(2)}%;transform:translateX(-50%) translateY(-15%);`;
       } else {
         labelCss += `left:${pct.toFixed(2)}%;transform:translateX(-50%);`;
       }
@@ -306,9 +299,7 @@ export class HaTimelineCard extends HTMLElement {
           margin-bottom: 12px;
         }
         .frise-wrap { position: relative; }
-        /* Wrapper pour préserver les border-radius tout en laissant dépasser les traits */
-        .frise-bar-wrap { border-radius: 6px; overflow: hidden; width: 100%; }
-        .frise-bar { display: flex; height: 36px; width: 100%; position: relative; }
+        .frise-bar { display: flex; height: 36px; border-radius: 6px; overflow: hidden; width: 100%; }
         .now-marker { position: absolute; top: 0; height: 36px; width: 2px; background: rgba(255,255,255,0.85); pointer-events: none; z-index: 2; }
         .ticks-row { position: relative; height: ${tickHeight}px; }
         .labels-row { position: relative; height: 18px; margin-top: 2px; }
@@ -320,9 +311,7 @@ export class HaTimelineCard extends HTMLElement {
       <ha-card>
         ${showTitle ? `<div class="card-title">${esc(cfg.title)}</div>` : ''}
         <div class="frise-wrap">
-          <div class="frise-bar-wrap">
-            <div id="frise-bar" class="frise-bar"></div>
-          </div>
+          <div id="frise-bar" class="frise-bar"></div>
           <div id="frise-ticks" class="ticks-row"></div>
           <div id="frise-labels" class="labels-row"></div>
         </div>
