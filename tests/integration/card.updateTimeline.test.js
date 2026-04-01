@@ -72,14 +72,16 @@ describe('HaTimelineCard._updateTimeline', () => {
     expect(labels.length).toBeGreaterThan(0);
   });
 
-  it('first label is "•" (now marker) for standard durations without past', () => {
-    // Without past, windowStart = now → first tick is the now marker → always "•"
+  it('"•" (now marker) is rendered in frise-now-dot for standard durations without past', () => {
+    // Without past, windowStart = now → the now marker "•" lives in its dedicated row
     const card = makeCard({
       calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }],
       duration: '24h',
     });
-    const labels = [...card.shadowRoot.getElementById('frise-labels').children];
-    expect(labels[0].textContent).toBe('•');
+    const nowDot = card.shadowRoot.getElementById('frise-now-dot');
+    expect(nowDot).not.toBeNull();
+    const nowDotTexts = [...nowDot.children].map(l => l.textContent.trim());
+    expect(nowDotTexts).toContain('•');
   });
 
   it('renders tick marks in frise-ticks', () => {
@@ -113,24 +115,30 @@ describe('HaTimelineCard._updateTimeline', () => {
   });
 
   it('ticks-row height reflects tick_height config (scaled for midnight markers)', () => {
-    // The ticks-row is sized at tick_height × 2.5 to accommodate midnight taller marks
+    // The ticks-row is sized at tick_height × 1.3 to accommodate midnight taller marks
     const card = makeCard({
       calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }],
       tick_height: 10,
     });
     const ticksRow = card.shadowRoot.getElementById('frise-ticks');
-    expect(ticksRow.style.height).toBe('25px'); // 10 × 2.5
+    expect(ticksRow.style.height).toBe('13px'); // 10 × 1.3
   });
 
-  it('now marker always renders as "•" (never as "Maint.")', () => {
+  it('now marker always renders as "•" in frise-now-dot (never as "Maint.")', () => {
     const card = makeCard({
       calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }],
       duration: '24h',
     });
+    // "•" lives in the dedicated now-dot row, not in frise-labels
+    const nowDot = card.shadowRoot.getElementById('frise-now-dot');
+    expect(nowDot).not.toBeNull();
+    const nowDotTexts = [...nowDot.children].map(l => l.textContent.trim());
+    expect(nowDotTexts).toContain('•');
+    // frise-labels should NOT contain "•" anymore
     const labels = [...card.shadowRoot.getElementById('frise-labels').children];
-    const texts = labels.map(l => l.textContent.trim());
-    expect(texts).not.toContain('Maint.');
-    expect(texts).toContain('•');
+    expect(labels.map(l => l.textContent.trim())).not.toContain('•');
+    // "Maint." must never appear anywhere
+    expect(card.shadowRoot.textContent).not.toContain('Maint.');
   });
 
   it('now tick does not create a sub-mark in frise-ticks', () => {
@@ -140,11 +148,10 @@ describe('HaTimelineCard._updateTimeline', () => {
       calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }],
       duration: '24h',
     });
-    // The number of sub-marks should be less than the number of labels
-    // (now tick skips the sub-mark)
+    // frise-labels only has hour labels — no "•" → sub-marks < labels + 1 (now-dot)
     const subMarks = card.shadowRoot.getElementById('frise-ticks').children.length;
     const labelCount = card.shadowRoot.getElementById('frise-labels').children.length;
-    expect(subMarks).toBeLessThan(labelCount);
+    expect(subMarks).toBeLessThanOrEqual(labelCount);
   });
 
   it('renders legend when show_legend is true', () => {

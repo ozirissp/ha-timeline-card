@@ -77,20 +77,23 @@ describe('HaTimelineCard._updateTimeline — past window', () => {
     expect(total).toBeCloseTo(100, 0);
   });
 
-  it('first label in labels row reflects past start, "•" appears in the middle', () => {
+  it('"•" appears in frise-now-dot, not in frise-labels, with past window', () => {
     const card = makeCard({
       calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }],
       duration: '6h',
       past: '2h',
     });
+    // "•" lives in the dedicated now-dot row
+    const nowDot = card.shadowRoot.getElementById('frise-now-dot');
+    expect(nowDot).not.toBeNull();
+    const nowDotTexts = [...nowDot.children].map(l => l.textContent.trim());
+    expect(nowDotTexts).toContain('•');
+    // frise-labels should NOT contain "•"
     const labels = [...card.shadowRoot.getElementById('frise-labels').children];
     const texts = labels.map(l => l.textContent.trim());
-    // "•" is always present (now marker is always a dot)
-    expect(texts).toContain('•');
-    // "Maint." is never displayed anymore
-    expect(texts).not.toContain('Maint.');
-    // The first label should NOT be "•" when past > 0 (now is in the middle)
-    expect(texts[0]).not.toBe('•');
+    expect(texts).not.toContain('•');
+    // "Maint." must never appear
+    expect(card.shadowRoot.textContent).not.toContain('Maint.');
   });
 
   it('renders segments covering the past AND future windows', () => {
@@ -114,16 +117,16 @@ describe('HaTimelineCard._updateTimeline — past window', () => {
     expect(ticks.length).toBeGreaterThan(0);
   });
 
-  it('now tick "•" uses now_color in labels, not in frise-ticks sub-marks', () => {
+  it('now tick "•" uses now_color in frise-now-dot, not in frise-ticks sub-marks', () => {
     const card = makeCard({
       calendars: [{ entity: 'calendar.a', color: '#fff', label: 'A' }],
       duration: '6h',
       past: '2h',
       now_color: '#ff00ff',
     });
-    // The "•" label should use now_color
-    const labels = [...card.shadowRoot.getElementById('frise-labels').children];
-    const dotLabel = labels.find(l => l.textContent.trim() === '•');
+    // The "•" label lives in frise-now-dot and should use now_color
+    const nowDot = card.shadowRoot.getElementById('frise-now-dot');
+    const dotLabel = [...nowDot.children].find(l => l.textContent.trim() === '•');
     expect(dotLabel).not.toBeUndefined();
     // jsdom may normalise hex to rgb — rgb(255, 0, 255) = #ff00ff
     expect(
@@ -131,9 +134,8 @@ describe('HaTimelineCard._updateTimeline — past window', () => {
     ).toBe(true);
     // The now tick must NOT produce a sub-mark in frise-ticks
     const subMarks = [...card.shadowRoot.getElementById('frise-ticks').children];
-    const subMarkCount = subMarks.length;
-    const labelCount = labels.length;
-    expect(subMarkCount).toBeLessThan(labelCount);
+    const labels = [...card.shadowRoot.getElementById('frise-labels').children];
+    expect(subMarks.length).toBeLessThanOrEqual(labels.length);
   });
 
   it('now-marker is inside frise-wrap (positional context)', () => {

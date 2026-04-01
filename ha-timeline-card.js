@@ -383,13 +383,15 @@
       // ── Tick marks + labels ──────────────────────────────────────────────────
       const labelsEl  = root.getElementById('frise-labels');
       const ticksEl   = root.getElementById('frise-ticks');
-      if (!labelsEl || !ticksEl) return;
+      const nowDotEl  = root.getElementById('frise-now-dot');
+      if (!labelsEl || !ticksEl || !nowDotEl) return;
 
       labelsEl.innerHTML = '';
       ticksEl.innerHTML  = '';
+      nowDotEl.innerHTML = '';
 
-      // Ticks-row must be tall enough for midnight markers (×2.5 the base height)
-      ticksEl.style.height = `${Math.round(tickHeight * 2.5)}px`;
+      // Ticks-row must be tall enough for midnight markers (×1.3 the base height)
+      ticksEl.style.height = `${Math.round(tickHeight * 1.3)}px`;
 
       // Choose tick interval based on the total visible window
       const tickMs = chooseTickInterval(totalMs);
@@ -454,8 +456,8 @@
         // ── Trait sous la barre (dans .ticks-row) — seulement pour les ticks non-now ──
         if (!isNowTick) {
           const isMidnight = isMidnightTick(tsMs);
-          // Midnight ticks: taller (×2.5) and slightly wider (2px) to mark day changes
-          const markHeight = isMidnight ? Math.round(tickHeight * 2.5) : tickHeight;
+          // Midnight ticks: taller (×1.3) and slightly wider (2px) to mark day changes
+          const markHeight = isMidnight ? Math.round(tickHeight * 1.3) : tickHeight;
           const markWidth  = isMidnight ? 2 : 1;
 
           const subMark = document.createElement('div');
@@ -472,30 +474,33 @@
         }
 
         // ── Label ──
-        const span = document.createElement('span');
-        // "now" tick → toujours un gros point •, jamais un trait
-        const labelText = isNowTick
-          ? '•'
-          : tickLabel(tsMs, isWindowStart, totalMs, false);
-
-        // Taille : gros point pour now (22px), texte normal pour les autres (10px)
-        const fontSize = isNowTick ? '22px' : '10px';
-        // Ajustement vertical : le • à 22px dépasse un peu, on le remonte légèrement
-        const lineHeight = isNowTick ? '1' : 'inherit';
-
-        let labelCss = `position:absolute;font-size:${fontSize};line-height:${lineHeight};white-space:nowrap;color:${color};`;
-        if (isWindowStart) {
-          labelCss += 'left:0%;';
-        } else if (offsetMs === totalMs) {
-          labelCss += 'left:100%;transform:translateX(-100%);';
-        } else if (isNowTick) {
-          labelCss += `left:${pct.toFixed(2)}%;transform:translateX(-50%) translateY(-15%);`;
+        if (isNowTick) {
+          // "•" lives in its own row between ticks and hour labels — never overlaps hours
+          const dot = document.createElement('span');
+          let dotCss = `position:absolute;font-size:18px;line-height:1;white-space:nowrap;color:${color};transform:translateX(-50%);`;
+          if (isWindowStart) {
+            dotCss = `position:absolute;font-size:18px;line-height:1;white-space:nowrap;color:${color};left:0%;`;
+          } else {
+            dotCss += `left:${pct.toFixed(2)}%;`;
+          }
+          dot.textContent = '•';
+          dot.style.cssText = dotCss;
+          nowDotEl.appendChild(dot);
         } else {
-          labelCss += `left:${pct.toFixed(2)}%;transform:translateX(-50%);`;
+          const span = document.createElement('span');
+          const labelText = tickLabel(tsMs, isWindowStart, totalMs, false);
+          let labelCss = `position:absolute;font-size:10px;line-height:inherit;white-space:nowrap;color:${color};`;
+          if (isWindowStart) {
+            labelCss += 'left:0%;';
+          } else if (offsetMs === totalMs) {
+            labelCss += 'left:100%;transform:translateX(-100%);';
+          } else {
+            labelCss += `left:${pct.toFixed(2)}%;transform:translateX(-50%);`;
+          }
+          span.textContent = labelText;
+          span.style.cssText = labelCss;
+          labelsEl.appendChild(span);
         }
-        span.textContent = labelText;
-        span.style.cssText = labelCss;
-        labelsEl.appendChild(span);
       });
     }
 
@@ -525,8 +530,9 @@
         .frise-wrap { position: relative; }
         .frise-bar { display: flex; height: 36px; border-radius: 6px; overflow: hidden; width: 100%; }
         .now-marker { position: absolute; top: 0; height: 36px; width: 2px; background: rgba(255,255,255,0.85); pointer-events: none; z-index: 2; }
-        .ticks-row { position: relative; height: ${Math.round(tickHeight * 2.5)}px; }
-        .labels-row { position: relative; height: 18px; margin-top: 2px; }
+        .ticks-row { position: relative; height: ${Math.round(tickHeight * 1.3)}px; }
+        .now-dot-row { position: relative; height: 20px; }
+        .labels-row { position: relative; height: 14px; margin-top: 1px; }
         .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
         .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px;
                        color: var(--secondary-text-color, #aaa); }
@@ -538,6 +544,7 @@
         <div class="frise-wrap">
           <div id="frise-bar" class="frise-bar"></div>
           <div id="frise-ticks" class="ticks-row"></div>
+          <div id="frise-now-dot" class="now-dot-row"></div>
           <div id="frise-labels" class="labels-row"></div>
         </div>
         ${showLegend ? `
