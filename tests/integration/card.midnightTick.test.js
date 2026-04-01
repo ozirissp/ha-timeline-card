@@ -146,8 +146,8 @@ describe('Midnight tick rendering', () => {
 
     const ticks = [...card.shadowRoot.getElementById('frise-ticks').children];
     // The only midnight is at position 0 (windowStart) which is filtered if too close to
-    // a regular tick — in any case no tick should exceed the midnight height (×2.5 scale)
-    const defaultMidnightHeight = 6 * 2.5; // tick_height * 2.5
+    // a regular tick — in any case no tick should exceed the midnight height (×1.3 scale)
+    const defaultMidnightHeight = 6 * 1.3; // tick_height * 1.3
     const allFitInBounds = ticks.every(t => parseInt(t.style.height, 10) <= defaultMidnightHeight + 1);
     expect(allFitInBounds).toBe(true);
   });
